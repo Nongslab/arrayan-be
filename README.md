@@ -128,4 +128,3 @@ npm run typecheck
 Repositori ini menerapkan standar keamanan **Branch Protection** pada branch `main`:
 1. **Dilarang Direct Push ke `main`**: Semua perubahan wajib melalui branch fitur (`feat/*`, `fix/*`, `chore/*`) dan diajukan lewat Pull Request (PR).
 2. **CI Quality Gate Otomatis**: Setiap commit di branch mana pun otomatis menjalankan validasi schema Prisma, generate client, Vitest unit test, dan TypeScript build.
-3. **Merge Restriction**: Hanya akun authorized (`rakai77`) yang berwenang mengeksekusi merge ke `main` setelah review dan CI berstatus lolos (hijau).
