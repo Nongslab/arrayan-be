@@ -29,18 +29,18 @@ arrayan-backend/
 │   ├── DEVELOPMENT_ROADMAP.md
 │   ├── BACKEND_OVERVIEW.md
 │   ├── SECURITY_GUIDELINES.md
-│   └── FRONTEND_GUIDELINES.md
+│   ├── FRONTEND_GUIDELINES.md
+│   └── PLAN_*.md            # Rencana implementasi per sprint (arsip)
 ├── prisma/
 │   ├── schema.prisma        # Database schema definitions
 │   ├── seed.ts              # Seeder roles & initial Super Admin
 │   └── migrations/          # Prisma database migrations history
 ├── src/
-│   ├── config/              # Environment config & constants
+│   ├── lib/prisma.ts        # Singleton Prisma Client
+│   ├── middlewares/         # authenticate (Bearer/cookie) & authorize (RBAC)
 │   ├── modules/
-│   │   └── auth/            # Auth controller, service, routes, & schemas
-│   ├── plugins/             # Fastify Swagger & CORS setup
-│   ├── app.ts               # Fastify app factory
-│   └── server.ts            # Entrypoint listener
+│   │   └── auth/            # Routes, service, Zod schema, login limiter, & tests
+│   └── server.ts            # Entrypoint: plugin CORS/cookie/JWT/Swagger + routes
 └── vitest.config.ts         # Vitest configuration
 ```
 
@@ -63,15 +63,16 @@ Salin file template `.env.example` ke `.env`:
 ```bash
 cp .env.example .env
 ```
-Pastikan variabel berikut sesuai:
-```env
-PORT=4000
-DATABASE_URL="postgresql://arrayan_user:arrayan_secret_2026@localhost:5432/arrayan_hris?schema=public"
-JWT_SECRET="arrayan_super_secret_jwt_key_minimum_32_chars_2026"
-JWT_REFRESH_SECRET="arrayan_super_secret_refresh_jwt_key_min_32_chars_2026"
-NODE_ENV="development"
-FRONTEND_URL="http://localhost:3000"
-```
+Variabel yang dipakai:
+
+| Variabel | Keterangan |
+| :--- | :--- |
+| `PORT` | Port API (default `4000`) |
+| `NODE_ENV` | `development` / `production` (production → cookie `Secure` + `SameSite=None`) |
+| `CORS_ORIGIN` | Origin frontend (default `http://localhost:5173`) |
+| `DATABASE_URL` | Koneksi PostgreSQL; nilai di `.env.example` cocok dengan `docker-compose.yml` |
+| `JWT_SECRET`, `COOKIE_SECRET` | **Wajib, minimal 32 karakter.** Server menolak start jika kosong. Production: `openssl rand -hex 32` |
+| `TRUST_PROXY` | `true` jika API berada di belakang nginx, agar IP klien terbaca untuk login limiter |
 
 ### 4. Menjalankan Database PostgreSQL
 ```bash
@@ -103,9 +104,14 @@ Buka browser dan akses Swagger UI di:
 
 Fitur autentikasi Swagger:
 1. Jalankan `POST /api/auth/login`.
-2. Salin token dari respons `data.accessToken`.
-3. Klik tombol hijau **`Authorize 🔓`** di kanan atas Swagger UI dan masukkan format `Bearer <TOKEN>`.
+2. Salin nilai `accessToken` dari body respons.
+3. Klik tombol hijau **`Authorize 🔓`** di kanan atas Swagger UI dan tempel token **tanpa** prefix `Bearer` (Swagger menambahkannya otomatis).
 4. Anda sekarang dapat mengetes endpoint terproteksi seperti `GET /api/auth/me`.
+
+Ringkasan sesi auth:
+* **Access token** JWT 15 menit — dikirim via header `Authorization: Bearer <token>` atau cookie HttpOnly `arrayan_access_token`.
+* **Refresh token** opaque 7 hari — body `refreshToken` atau cookie `arrayan_refresh_token` (path `/api/auth`), disimpan sebagai hash SHA-256 dan dirotasi setiap `POST /api/auth/refresh`.
+* **Login limiter** — 5 percobaan gagal per IP + email dalam 15 menit → HTTP `429` dengan header `Retry-After`.
 
 ---
 

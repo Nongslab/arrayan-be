@@ -50,7 +50,7 @@ Backend adalah benteng utama validasi bisnis dan penegakan otorisasi.
 
 ### 2.3. Anti-Brute Force & Rate Limiting
 - Terapkan pembatasan frekuensi request (*Rate Limiting*):
-  - **Endpoint Login (`/api/auth/login`)**: Maksimal 5 kali percobaan gagal per IP/Email dalam jendela waktu 15 menit. Percobaan berikutnya diblokir sementara (*temporary lockout*).
+  - **Endpoint Login (`/api/auth/login`)**: Maksimal 5 kali percobaan gagal per IP/Email dalam jendela waktu 15 menit. Percobaan berikutnya diblokir sementara (*temporary lockout*). ✅ Diimplementasikan di `src/modules/auth/login-limiter.ts` — kunci = IP + email (agar karyawan yang berbagi IP kantor tidak saling terkunci), respons HTTP `429` + header `Retry-After`.
   - **Endpoint Publik / Clock-in**: Diberi batas wajar (misal: maksimal 30 request per menit per sesi) untuk mencegah serangan DoS atau spamming.
 
 ### 2.4. Validasi Ketat Unggah Berkas (*File Upload Security*)

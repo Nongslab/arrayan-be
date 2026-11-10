@@ -8,7 +8,23 @@ import swaggerUi from '@fastify/swagger-ui'
 import { prisma } from './lib/prisma.js'
 import { authRoutes } from './modules/auth/auth.routes.js'
 
-const fastify = Fastify({ logger: true })
+/** Secret wajib diisi via environment — tidak ada nilai fallback yang bisa bocor ke production. */
+function requireEnv(name: string): string {
+  const value = process.env[name]
+  if (!value || value.length < 32) {
+    throw new Error(`Environment variable ${name} wajib diisi (minimal 32 karakter). Lihat .env.example.`)
+  }
+  return value
+}
+
+const JWT_SECRET = requireEnv('JWT_SECRET')
+const COOKIE_SECRET = requireEnv('COOKIE_SECRET')
+
+const fastify = Fastify({
+  logger: true,
+  // Aktifkan saat berjalan di belakang reverse proxy (nginx) agar request.ip = IP klien asli.
+  trustProxy: process.env.TRUST_PROXY === 'true',
+})
 
 async function bootstrap() {
   // 1. CORS Setup
@@ -19,13 +35,13 @@ async function bootstrap() {
 
   // 2. Cookie & JWT Setup
   await fastify.register(cookie, {
-    secret: process.env.COOKIE_SECRET || 'cookie_fallback_secret',
+    secret: COOKIE_SECRET,
   })
 
   await fastify.register(jwt, {
-    secret: process.env.JWT_SECRET || 'jwt_fallback_secret',
+    secret: JWT_SECRET,
     cookie: {
-      cookieName: 'arrayan_token',
+      cookieName: 'arrayan_access_token',
       signed: false,
     },
   })
