@@ -82,6 +82,14 @@ erDiagram
     Role ||--o{ User : "memiliki"
     User ||--o| Employee : "terhubung"
     Department ||--o{ Employee : "bernaung"
+    Department ||--o{ Department : "divisi/sub-divisi (parent_id)"
+    JobTitle ||--o{ Employee : "menjabat"
+    OfficeLocation ||--o{ Employee : "lokasi absen default"
+    WorkShift ||--o{ Employee : "shift default"
+    JobTitle ||--o{ KPITemplate : "template per jabatan"
+    Department ||--o{ KPITemplate : "template per departemen"
+    KPITemplate ||--|{ KPIIndicator : "berisi"
+    LeaveType ||--o{ LeaveRequest : "jenis"
     Employee ||--o{ Employee : "atasan/bawahan (manager_id)"
     Employee ||--o{ Attendance : "melakukan"
     Employee ||--o{ LeaveRequest : "mengajukan"
@@ -103,7 +111,21 @@ erDiagram
    - *Keuntungan*: Fleksibel jika ke depan ada penambahan role baru tanpa perlu ubah tipe enum database.
 
 2. **`Employee` (Master Data & Tree Branch)**:
-   - `id`, `user_id` (opsional 1-to-1), `nik`, `full_name`, `department_id`, `manager_id` (self-referencing FK ke `Employee.id`), `job_title`, `employment_type` (`PROBATION`, `KARTAP`, `PKL`), `join_date`, `ktp_url`, `npwp_url`, `bpjs_number`.
+   - `id`, `user_id` (opsional 1-to-1), `nik`, `full_name`, `job_title_id` (wajib), `department_id`, `office_location_id`, `work_shift_id` (FK ke master data, `ON DELETE RESTRICT`), `manager_id` (self-referencing FK ke `Employee.id`), `employment_type` (`PROBATION`, `KARTAP`, `PKL`), `join_date`, `ktp_url`, `npwp_url`, `bpjs_number`.
+   - **Master Data** (✅ diimplementasikan, `prisma/schema.prisma` §4 — seed di `prisma/seed-data/master.ts`). Semua memiliki `id`, `code` unik, `name`, `is_active`, timestamps (AGENTS.md §1):
+
+     | Tabel | Kegunaan | Field khusus |
+     | :--- | :--- | :--- |
+     | `departments` | Divisi berjenjang | `parent_id` (self FK) |
+     | `job_titles` | Jabatan | `level` (`MANAGEMENT` → `STAFF`, terpisah dari Role RBAC) |
+     | `office_locations` | Geofencing & Wi-Fi lock | `latitude`, `longitude`, `radius_meters`, `wifi_ssids[]`, `wifi_bssids[]`, `timezone` |
+     | `work_shifts` | Jam kerja | `start_time`/`end_time` (`HH:mm`), `break_minutes`, `late_tolerance_minutes`, `work_days[]` (ISO 1–7), `is_overnight` |
+     | `leave_types` | Jenis cuti/izin | `category` (`ANNUAL`, `SICK`, …), `default_quota`, `is_paid`, `requires_attachment`, `deducts_annual_leave` |
+     | `holidays` | Libur nasional, cuti bersama, libur perusahaan | `date`, `kind` |
+     | `training_categories` | Kategori training | `description` |
+     | `kpi_templates` + `kpi_indicators` | Template KPI per jabatan/departemen | `period`; indikator: `type`, `weight` (total 100), `target`, `unit` |
+
+     Menonaktifkan master dilakukan via `is_active = false`; row yang sudah direferensikan tidak dapat dihapus (FK `RESTRICT`).
    - **Logika Tree Branch**:
      Untuk mendapatkan silsilah atasan atau bawahan, backend menjalankan *Recursive CTE*:
      ```sql
@@ -125,7 +147,7 @@ erDiagram
    - Rantai persetujuan mengikuti hierarki atasan langsung hingga HR/Management.
 
 5. **`KPITemplate` & `KPIEvaluation` (Kinerja Kualitatif & Kuantitatif)**:
-   - `KPITemplate`: `id`, `title`, `department_id`, `indicators` (`JSONB` berisi target angka kuantitatif & deskripsi kualitatif).
+   - `KPITemplate` (✅ master data): `id`, `code`, `name`, `period`, `job_title_id?`, `department_id?`, relasi ke tabel `kpi_indicators` (kuantitatif: `target` + `unit`; kualitatif: deskripsi; masing-masing ber-`weight`).
    - `KPIEvaluation`: `id`, `employee_id`, `template_id`, `evaluator_id`, `period` (bulan/kuartal), `scores` (`JSONB`), `final_score`, `feedback_notes`.
    - *Visibilitas*: Mengikuti *Tree Branch* (Senior Manager hanya melihat divisi bawahannya; HR & Management melihat seluruh divisi).
 
