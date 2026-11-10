@@ -18,7 +18,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.substring(7).trim()
     } else {
-      token = request.cookies.arrayan_access_token || request.cookies.arrayan_token
+      token = request.cookies.arrayan_access_token
     }
 
     if (!token) {

@@ -2,10 +2,39 @@ import type { FastifyPluginAsync } from 'fastify'
 import { authService } from './auth.service.js'
 import { loginSchema, refreshSchema } from './auth.schema.js'
 import { authenticate } from '../../middlewares/auth.middleware.js'
+import { loginLimiter } from './login-limiter.js'
+import type { FastifyReply } from 'fastify'
 
 const ACCESS_TOKEN_EXPIRY = '15m'
 const ACCESS_TOKEN_MAX_AGE = 15 * 60 // 15 menit
 const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 // 7 hari
+
+export const ACCESS_TOKEN_COOKIE = 'arrayan_access_token'
+export const REFRESH_TOKEN_COOKIE = 'arrayan_refresh_token'
+const REFRESH_COOKIE_PATH = '/api/auth'
+
+function setAuthCookies(reply: FastifyReply, accessToken: string, refreshToken: string) {
+  const isProduction = process.env.NODE_ENV === 'production'
+  const base = {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? ('none' as const) : ('lax' as const),
+  }
+
+  reply.setCookie(ACCESS_TOKEN_COOKIE, accessToken, { ...base, path: '/', maxAge: ACCESS_TOKEN_MAX_AGE })
+  reply.setCookie(REFRESH_TOKEN_COOKIE, refreshToken, {
+    ...base,
+    path: REFRESH_COOKIE_PATH,
+    maxAge: REFRESH_TOKEN_MAX_AGE,
+  })
+}
+
+function clearAuthCookies(reply: FastifyReply) {
+  reply.clearCookie(ACCESS_TOKEN_COOKIE, { path: '/' })
+  reply.clearCookie(REFRESH_TOKEN_COOKIE, { path: REFRESH_COOKIE_PATH })
+  // Cookie lama (sebelum penyatuan nama cookie) — tetap dibersihkan agar browser lama bersih.
+  reply.clearCookie('arrayan_token', { path: '/' })
+}
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
   // 1. Endpoint Login (Mengembalikan accessToken, refreshToken, dan Set HttpOnly Cookies)
@@ -77,6 +106,15 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
             message: { type: 'string' },
           },
         },
+        429: {
+          description: 'Too Many Requests / 5x login gagal dalam 15 menit (per IP + email)',
+          type: 'object',
+          properties: {
+            statusCode: { type: 'number' },
+            error: { type: 'string' },
+            message: { type: 'string' },
+          },
+        },
       },
     },
     handler: async (request, reply) => {
@@ -89,50 +127,22 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
 
+      const { email } = parseResult.data
+      const retryAfter = loginLimiter.retryAfterSeconds(request.ip, email)
+      if (retryAfter > 0) {
+        reply.header('Retry-After', String(retryAfter))
+        return reply.status(429).send({
+          statusCode: 429,
+          error: 'Too Many Requests',
+          message: `Terlalu banyak percobaan login gagal. Coba lagi dalam ${Math.ceil(retryAfter / 60)} menit.`,
+        })
+      }
+
+      let sessionPayload
       try {
-        const sessionPayload = await authService.validateUser(parseResult.data)
-
-        // 1. Generate Access Token JWT (15 menit)
-        const accessToken = fastify.jwt.sign(sessionPayload, { expiresIn: ACCESS_TOKEN_EXPIRY })
-
-        // 2. Generate Refresh Token Opaque (7 hari) & Simpan di Database
-        const refreshToken = await authService.createRefreshToken(sessionPayload.id)
-
-        const isProduction = process.env.NODE_ENV === 'production'
-
-        // Set HttpOnly Cookies untuk Web Client
-        reply.setCookie('arrayan_access_token', accessToken, {
-          path: '/',
-          httpOnly: true,
-          secure: isProduction,
-          sameSite: isProduction ? 'none' : 'lax',
-          maxAge: ACCESS_TOKEN_MAX_AGE,
-        })
-
-        reply.setCookie('arrayan_token', accessToken, {
-          path: '/',
-          httpOnly: true,
-          secure: isProduction,
-          sameSite: isProduction ? 'none' : 'lax',
-          maxAge: ACCESS_TOKEN_MAX_AGE,
-        })
-
-        reply.setCookie('arrayan_refresh_token', refreshToken, {
-          path: '/api/auth',
-          httpOnly: true,
-          secure: isProduction,
-          sameSite: isProduction ? 'none' : 'lax',
-          maxAge: REFRESH_TOKEN_MAX_AGE,
-        })
-
-        return reply.send({
-          statusCode: 200,
-          message: 'Login berhasil',
-          accessToken,
-          refreshToken,
-          user: sessionPayload,
-        })
+        sessionPayload = await authService.validateUser(parseResult.data)
       } catch (err: unknown) {
+        loginLimiter.recordFailure(request.ip, email)
         const error = err as Error
         return reply.status(401).send({
           statusCode: 401,
@@ -140,6 +150,25 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           message: error.message || 'Email atau password salah',
         })
       }
+
+      loginLimiter.reset(request.ip, email)
+
+      // 1. Generate Access Token JWT (15 menit)
+      const accessToken = fastify.jwt.sign(sessionPayload, { expiresIn: ACCESS_TOKEN_EXPIRY })
+
+      // 2. Generate Refresh Token Opaque (7 hari) & Simpan di Database
+      const refreshToken = await authService.createRefreshToken(sessionPayload.id)
+
+      // 3. Set HttpOnly Cookies untuk Web Client
+      setAuthCookies(reply, accessToken, refreshToken)
+
+      return reply.send({
+        statusCode: 200,
+        message: 'Login berhasil',
+        accessToken,
+        refreshToken,
+        user: sessionPayload,
+      })
     },
   })
 
@@ -215,7 +244,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const parseResult = refreshSchema.safeParse(request.body)
       const rawBodyToken = parseResult.success ? parseResult.data.refreshToken : undefined
-      const token = rawBodyToken || request.cookies.arrayan_refresh_token
+      const token = rawBodyToken || request.cookies[REFRESH_TOKEN_COOKIE]
 
       if (!token) {
         return reply.status(400).send({
@@ -229,32 +258,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         const { user, newRefreshToken } = await authService.rotateRefreshToken(token)
 
         const newAccessToken = fastify.jwt.sign(user, { expiresIn: ACCESS_TOKEN_EXPIRY })
-        const isProduction = process.env.NODE_ENV === 'production'
 
         // Perbarui cookies
-        reply.setCookie('arrayan_access_token', newAccessToken, {
-          path: '/',
-          httpOnly: true,
-          secure: isProduction,
-          sameSite: isProduction ? 'none' : 'lax',
-          maxAge: ACCESS_TOKEN_MAX_AGE,
-        })
-
-        reply.setCookie('arrayan_token', newAccessToken, {
-          path: '/',
-          httpOnly: true,
-          secure: isProduction,
-          sameSite: isProduction ? 'none' : 'lax',
-          maxAge: ACCESS_TOKEN_MAX_AGE,
-        })
-
-        reply.setCookie('arrayan_refresh_token', newRefreshToken, {
-          path: '/api/auth',
-          httpOnly: true,
-          secure: isProduction,
-          sameSite: isProduction ? 'none' : 'lax',
-          maxAge: REFRESH_TOKEN_MAX_AGE,
-        })
+        setAuthCookies(reply, newAccessToken, newRefreshToken)
 
         return reply.send({
           statusCode: 200,
@@ -299,7 +305,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const parseResult = refreshSchema.safeParse(request.body)
       const rawBodyToken = parseResult.success ? parseResult.data.refreshToken : undefined
-      const token = rawBodyToken || request.cookies.arrayan_refresh_token
+      const token = rawBodyToken || request.cookies[REFRESH_TOKEN_COOKIE]
 
       if (token) {
         try {
@@ -309,9 +315,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      reply.clearCookie('arrayan_access_token', { path: '/' })
-      reply.clearCookie('arrayan_token', { path: '/' })
-      reply.clearCookie('arrayan_refresh_token', { path: '/api/auth' })
+      clearAuthCookies(reply)
 
       return reply.send({
         statusCode: 200,
