@@ -89,6 +89,14 @@ npm run prisma:seed
 > * **Email:** `superadmin@arrayan.com`
 > * **Password:** `Password123!`
 
+Seeder juga mengisi **master data** (idempotent, upsert by `code`) dari `prisma/seed-data/master.ts`:
+departemen berjenjang (`HQ` → `ENG`, `HRD`, `FIN`, `OPS`), jabatan + level hierarki, lokasi kantor `HO`,
+shift `REGULAR` 08:00–17:00, jenis cuti, hari libur 2026/2027, kategori training, dan contoh template KPI.
+
+> ⚠️ Koordinat & Wi-Fi lokasi kantor `HO` masih **placeholder** — ganti dengan data riil klien sebelum go-live.
+
+📘 Detail struktur, ERD, flowchart, dan aturan master data: [`docs/MASTER_DATA.md`](docs/MASTER_DATA.md).
+
 ### 6. Menjalankan Server Development
 ```bash
 npm run dev

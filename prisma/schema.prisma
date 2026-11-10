@@ -13,7 +13,7 @@ generator client {
 model Role {
   id          String   @id @default(uuid())
   code        String   @unique // 'SUPER_ADMIN', 'MANAGEMENT', 'SR_MANAGER', 'MANAGER', 'SUPERVISOR', 'STAFF'
-  name        String   // 'Super Admin / HR GA', 'Management', etc.
+  name        String // 'Super Admin / HR GA', 'Management', etc.
   description String?
   permissions Json     @default("[]") // Array of string permissions
   users       User[]
@@ -63,19 +63,31 @@ model Employee {
   user           User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   nik            String         @unique
   fullName       String         @map("full_name")
-  jobTitle       String         @map("job_title")
-  department     String?        // Misal: IT, HR, Marketing
   employmentType EmploymentType @default(PROBATION) @map("employment_type")
   joinDate       DateTime       @default(now()) @map("join_date")
 
+  // Relasi ke Master Data (AGENTS.md §1 — tidak ada free-text untuk entitas inti)
+  jobTitleId       String          @map("job_title_id")
+  jobTitle         JobTitle        @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  departmentId     String?         @map("department_id")
+  department       Department?     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  officeLocationId String?         @map("office_location_id") // Lokasi absensi default
+  officeLocation   OfficeLocation? @relation(fields: [officeLocationId], references: [id], onDelete: Restrict)
+  workShiftId      String?         @map("work_shift_id") // Shift kerja default
+  workShift        WorkShift?      @relation(fields: [workShiftId], references: [id], onDelete: Restrict)
+
   // Tree Branch Hierarchy: Self-referencing Foreign Key
-  managerId      String?        @map("manager_id")
-  manager        Employee?      @relation("EmployeeHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
-  subordinates   Employee[]     @relation("EmployeeHierarchy")
+  managerId    String?    @map("manager_id")
+  manager      Employee?  @relation("EmployeeHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
+  subordinates Employee[] @relation("EmployeeHierarchy")
 
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([jobTitleId])
+  @@index([departmentId])
+  @@index([officeLocationId])
+  @@index([workShiftId])
   @@map("employees")
 }
 
@@ -85,3 +97,206 @@ enum EmploymentType {
   PKL
 }
 
+// =============================================================
+// 4. MASTER DATA
+// Konvensi: id (uuid), code (UPPER_SNAKE unik), name, isActive,
+// createdAt/updatedAt. Nonaktifkan via isActive — jangan hapus row
+// yang sudah direferensikan (FK menggunakan onDelete: Restrict).
+// =============================================================
+
+/// Level hierarki jabatan (Tree Branch PRD) — terpisah dari Role (hak akses RBAC).
+enum HierarchyLevel {
+  MANAGEMENT
+  SR_MANAGER
+  MANAGER
+  SUPERVISOR
+  STAFF
+}
+
+/// Departemen / Divisi berjenjang (Divisi → Sub-divisi) via parentId.
+model Department {
+  id           String        @id @default(uuid())
+  code         String        @unique
+  name         String
+  description  String?
+  parentId     String?       @map("parent_id")
+  parent       Department?   @relation("DepartmentHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children     Department[]  @relation("DepartmentHierarchy")
+  employees    Employee[]
+  kpiTemplates KpiTemplate[]
+  isActive     Boolean       @default(true) @map("is_active")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  @@index([parentId])
+  @@map("departments")
+}
+
+/// Jabatan beserta level hierarkinya.
+model JobTitle {
+  id           String         @id @default(uuid())
+  code         String         @unique
+  name         String
+  level        HierarchyLevel @default(STAFF)
+  description  String?
+  employees    Employee[]
+  kpiTemplates KpiTemplate[]
+  isActive     Boolean        @default(true) @map("is_active")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  @@map("job_titles")
+}
+
+/// Lokasi kantor untuk Geofencing (radius GPS) & Wi-Fi Location Lock.
+model OfficeLocation {
+  id           String     @id @default(uuid())
+  code         String     @unique
+  name         String
+  address      String?
+  latitude     Decimal    @db.Decimal(9, 6)
+  longitude    Decimal    @db.Decimal(9, 6)
+  radiusMeters Int        @default(100) @map("radius_meters")
+  wifiSsids    String[]   @default([]) @map("wifi_ssids")
+  wifiBssids   String[]   @default([]) @map("wifi_bssids")
+  timezone     String     @default("Asia/Jakarta")
+  employees    Employee[]
+  isActive     Boolean    @default(true) @map("is_active")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  @@map("office_locations")
+}
+
+/// Shift / jam kerja. Waktu format "HH:mm" (zona waktu lokasi kantor).
+model WorkShift {
+  id                   String     @id @default(uuid())
+  code                 String     @unique
+  name                 String
+  startTime            String     @map("start_time")
+  endTime              String     @map("end_time")
+  breakMinutes         Int        @default(60) @map("break_minutes")
+  lateToleranceMinutes Int        @default(15) @map("late_tolerance_minutes")
+  /// Hari kerja ISO-8601: 1 = Senin … 7 = Minggu
+  workDays             Int[]      @default([1, 2, 3, 4, 5]) @map("work_days")
+  isOvernight          Boolean    @default(false) @map("is_overnight")
+  employees            Employee[]
+  isActive             Boolean    @default(true) @map("is_active")
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
+
+  @@map("work_shifts")
+}
+
+enum LeaveCategory {
+  ANNUAL
+  SICK
+  PERMISSION
+  MATERNITY
+  SPECIAL
+  UNPAID
+}
+
+/// Jenis cuti / izin. category dipakai untuk logika bisnis (mis. widget "Yang Sakit Hari Ini").
+model LeaveType {
+  id                 String        @id @default(uuid())
+  code               String        @unique
+  name               String
+  category           LeaveCategory
+  /// Kuota default per tahun (hari). 0 = tidak dibatasi kuota.
+  defaultQuota       Int           @default(0) @map("default_quota")
+  isPaid             Boolean       @default(true) @map("is_paid")
+  requiresAttachment Boolean       @default(false) @map("requires_attachment")
+  deductsAnnualLeave Boolean       @default(false) @map("deducts_annual_leave")
+  isActive           Boolean       @default(true) @map("is_active")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  @@map("leave_types")
+}
+
+enum HolidayKind {
+  NATIONAL
+  COLLECTIVE_LEAVE
+  COMPANY
+}
+
+/// Hari libur nasional, cuti bersama (memotong cuti tahunan), dan libur perusahaan.
+model Holiday {
+  id        String      @id @default(uuid())
+  code      String      @unique
+  name      String
+  date      DateTime    @db.Date
+  kind      HolidayKind
+  isActive  Boolean     @default(true) @map("is_active")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@index([date])
+  @@map("holidays")
+}
+
+/// Kategori pelatihan (Modul 6).
+model TrainingCategory {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("training_categories")
+}
+
+enum KpiPeriod {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum KpiIndicatorType {
+  QUANTITATIVE
+  QUALITATIVE
+}
+
+/// Template KPI — berlaku per jabatan dan/atau departemen (keduanya opsional = umum).
+model KpiTemplate {
+  id           String         @id @default(uuid())
+  code         String         @unique
+  name         String
+  description  String?
+  period       KpiPeriod      @default(QUARTERLY)
+  jobTitleId   String?        @map("job_title_id")
+  jobTitle     JobTitle?      @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  departmentId String?        @map("department_id")
+  department   Department?    @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  indicators   KpiIndicator[]
+  isActive     Boolean        @default(true) @map("is_active")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  @@index([jobTitleId])
+  @@index([departmentId])
+  @@map("kpi_templates")
+}
+
+/// Indikator penilaian dalam template KPI. Total weight per template = 100 (divalidasi di API).
+model KpiIndicator {
+  id          String           @id @default(uuid())
+  templateId  String           @map("template_id")
+  template    KpiTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  type        KpiIndicatorType
+  weight      Decimal          @db.Decimal(5, 2)
+  /// Target angka (khusus QUANTITATIVE)
+  target      Decimal?         @db.Decimal(14, 2)
+  unit        String?
+  sortOrder   Int              @default(0) @map("sort_order")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@index([templateId])
+  @@map("kpi_indicators")
+}

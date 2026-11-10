@@ -1,7 +1,122 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcrypt'
+import {
+  DEPARTMENTS,
+  JOB_TITLES,
+  OFFICE_LOCATIONS,
+  WORK_SHIFTS,
+  LEAVE_TYPES,
+  HOLIDAYS,
+  TRAINING_CATEGORIES,
+  KPI_TEMPLATES,
+  SUPER_ADMIN_ASSIGNMENT,
+} from './seed-data/master.js'
 
 const prisma = new PrismaClient()
+
+/** Upsert seluruh master data berdasarkan `code` (idempotent). */
+async function seedMasterData() {
+  console.log('Inserting master data...')
+
+  const deptIds = new Map<string, string>()
+  for (const { parentCode, ...dept } of DEPARTMENTS) {
+    const parentId = parentCode ? deptIds.get(parentCode) : undefined
+    const row = await prisma.department.upsert({
+      where: { code: dept.code },
+      update: { ...dept, parentId: parentId ?? null },
+      create: { ...dept, parentId },
+    })
+    deptIds.set(row.code, row.id)
+  }
+
+  const jobIds = new Map<string, string>()
+  for (const job of JOB_TITLES) {
+    const row = await prisma.jobTitle.upsert({ where: { code: job.code }, update: job, create: job })
+    jobIds.set(row.code, row.id)
+  }
+
+  for (const office of OFFICE_LOCATIONS) {
+    await prisma.officeLocation.upsert({ where: { code: office.code }, update: office, create: office })
+  }
+
+  for (const shift of WORK_SHIFTS) {
+    await prisma.workShift.upsert({ where: { code: shift.code }, update: shift, create: shift })
+  }
+
+  for (const leaveType of LEAVE_TYPES) {
+    await prisma.leaveType.upsert({ where: { code: leaveType.code }, update: leaveType, create: leaveType })
+  }
+
+  for (const { date, ...holiday } of HOLIDAYS) {
+    const data = { ...holiday, date: new Date(`${date}T00:00:00.000Z`) }
+    await prisma.holiday.upsert({ where: { code: holiday.code }, update: data, create: data })
+  }
+
+  for (const category of TRAINING_CATEGORIES) {
+    await prisma.trainingCategory.upsert({ where: { code: category.code }, update: category, create: category })
+  }
+
+  for (const { jobTitleCode, departmentCode, indicators, ...template } of KPI_TEMPLATES) {
+    const data = {
+      ...template,
+      jobTitleId: jobTitleCode ? jobIds.get(jobTitleCode) ?? null : null,
+      departmentId: departmentCode ? deptIds.get(departmentCode) ?? null : null,
+    }
+    const indicatorRows = indicators.map((indicator, index) => ({ ...indicator, sortOrder: index }))
+    // Indikator template seed diganti utuh setiap seed agar selalu sesuai definisi
+    await prisma.kpiTemplate.upsert({
+      where: { code: template.code },
+      update: { ...data, indicators: { deleteMany: {}, create: indicatorRows } },
+      create: { ...data, indicators: { create: indicatorRows } },
+    })
+  }
+
+  console.log(
+    `  departments=${DEPARTMENTS.length} jobTitles=${JOB_TITLES.length} offices=${OFFICE_LOCATIONS.length} ` +
+      `shifts=${WORK_SHIFTS.length} leaveTypes=${LEAVE_TYPES.length} holidays=${HOLIDAYS.length} ` +
+      `trainingCategories=${TRAINING_CATEGORIES.length} kpiTemplates=${KPI_TEMPLATES.length}`,
+  )
+}
+
+/**
+ * Profil karyawan untuk akun Super Admin. Jika sudah ada, hanya FK master yang
+ * masih kosong yang diisi — perubahan yang dibuat admin lewat aplikasi tidak ditimpa.
+ */
+async function seedSuperAdminEmployee(userId: string) {
+  const [jobTitle, department, officeLocation, workShift] = await Promise.all([
+    prisma.jobTitle.findUniqueOrThrow({ where: { code: SUPER_ADMIN_ASSIGNMENT.jobTitleCode } }),
+    prisma.department.findUniqueOrThrow({ where: { code: SUPER_ADMIN_ASSIGNMENT.departmentCode } }),
+    prisma.officeLocation.findUniqueOrThrow({ where: { code: SUPER_ADMIN_ASSIGNMENT.officeLocationCode } }),
+    prisma.workShift.findUniqueOrThrow({ where: { code: SUPER_ADMIN_ASSIGNMENT.workShiftCode } }),
+  ])
+
+  const existing = await prisma.employee.findUnique({ where: { nik: 'ADM-001' } })
+  if (!existing) {
+    await prisma.employee.create({
+      data: {
+        nik: 'ADM-001',
+        fullName: 'Super Administrator HR',
+        employmentType: 'KARTAP',
+        userId,
+        jobTitleId: jobTitle.id,
+        departmentId: department.id,
+        officeLocationId: officeLocation.id,
+        workShiftId: workShift.id,
+      },
+    })
+    return
+  }
+
+  await prisma.employee.update({
+    where: { id: existing.id },
+    data: {
+      userId: existing.userId ?? userId,
+      departmentId: existing.departmentId ?? department.id,
+      officeLocationId: existing.officeLocationId ?? officeLocation.id,
+      workShiftId: existing.workShiftId ?? workShift.id,
+    },
+  })
+}
 
 const DEFAULT_ROLES = [
   {
@@ -60,7 +175,10 @@ async function main() {
     })
   }
 
-  // 2. Seed Default Super Admin Account
+  // 2. Seed Master Data
+  await seedMasterData()
+
+  // 3. Seed Default Super Admin Account
   const superAdminRole = await prisma.role.findUniqueOrThrow({
     where: { code: 'SUPER_ADMIN' },
   })
@@ -76,18 +194,10 @@ async function main() {
       email: adminEmail,
       passwordHash,
       roleId: superAdminRole.id,
-      employee: {
-        create: {
-          nik: 'ADM-001',
-          fullName: 'Super Administrator HR',
-          jobTitle: 'HR & System Admin',
-          department: 'HR GA',
-          employmentType: 'KARTAP',
-        },
-      },
     },
-    include: { employee: true },
   })
+
+  await seedSuperAdminEmployee(adminUser.id)
 
   console.log('✅ Seeding completed!')
   console.log('----------------------------------------------------')
