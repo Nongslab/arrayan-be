@@ -1,13 +1,14 @@
 # Implementation Plan: CI Pipeline Setup & Branch Protection (GitHub Actions)
 
-Membangun Continuous Integration (CI) pipeline pada repository [arrayan-be](https://github.com/rakai77/arrayan-be) menggunakan **GitHub Actions**. CI ini berfungsi sebagai gerbang otomatis (*Quality Gate*) yang memverifikasi setiap Pull Request (PR) dan push branch sebelum diizinkan merge ke branch `main`.
+Membangun Continuous Integration (CI) pipeline pada repository [arrayan-be](https://github.com/Nongslab/arrayan-be) menggunakan **GitHub Actions**. CI ini berfungsi sebagai gerbang otomatis (*Quality Gate*) yang memverifikasi setiap Pull Request (PR) dan push branch sebelum diizinkan merge ke branch `main`.
 
 ---
 
 ## Status Repository & Branch Protection
 
 > [!NOTE]
-> - Repository [rakai77/arrayan-be](https://github.com/rakai77/arrayan-be) sudah berstatus **Public**.
+> - Repository [Nongslab/arrayan-be](https://github.com/Nongslab/arrayan-be) sudah berstatus **Public**.
+> - **Update pasca-rencana**: workflow kini juga menjalankan `npm test` (Vitest) dan berjalan pada push ke semua branch — lihat `.github/workflows/ci.yml` sebagai sumber kebenaran.
 > - **Branch Protection di `main` SUDAH AKTIF**: Direct push ke `main` diblokir otomatis oleh GitHub. Semua penambahan kode wajib melalui Pull Request (PR).
 > - Job CI `Build & Typecheck` akan didaftarkan sebagai **Required Status Check** di GitHub branch protection (PR otomatis terkunci jika CI gagal/merah).
 

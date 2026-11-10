@@ -1,5 +1,13 @@
 # Implementation Plan — Backend Authentication & User Management (Sprint 1)
 
+> [!NOTE]
+> **Status (arsip)**: Task 1, 2, dan 4 selesai di PR #5, dengan beberapa perubahan dari rencana awal:
+> - Cookie sesi bernama `arrayan_access_token` (bukan `arrayan_token`), ditambah refresh token `arrayan_refresh_token` dengan rotasi, serta dukungan Bearer header.
+> - Endpoint tambahan `POST /api/auth/refresh`.
+> - **Task 3 (`/api/users`) belum dikerjakan** — dipindah ke Fase 2 (US-2.2 di `DEVELOPMENT_ROADMAP.md`).
+>
+> Untuk kondisi terkini lihat `README.md` dan `DEVELOPMENT_ROADMAP.md`.
+
 Dokumen ini adalah rencana kerja detail (*Step-by-Step Task Breakdown*) untuk mengimplementasikan modul **Authentication & User Management** di `arrayan-backend`.
 
 Pengerjaan dilakukan di branch: `feat/setup-planning` (atau `feat/auth-system`) dan di-merge ke `main` hanya melalui **Pull Request (PR)**.
