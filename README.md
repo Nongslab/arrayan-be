@@ -95,6 +95,8 @@ shift `REGULAR` 08:00–17:00, jenis cuti, hari libur 2026/2027, kategori traini
 
 > ⚠️ Koordinat & Wi-Fi lokasi kantor `HO` masih **placeholder** — ganti dengan data riil klien sebelum go-live.
 
+📘 Detail struktur, ERD, flowchart, dan aturan master data: [`docs/MASTER_DATA.md`](docs/MASTER_DATA.md).
+
 ### 6. Menjalankan Server Development
 ```bash
 npm run dev

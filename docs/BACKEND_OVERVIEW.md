@@ -126,6 +126,7 @@ erDiagram
      | `kpi_templates` + `kpi_indicators` | Template KPI per jabatan/departemen | `period`; indikator: `type`, `weight` (total 100), `target`, `unit` |
 
      Menonaktifkan master dilakukan via `is_active = false`; row yang sudah direferensikan tidak dapat dihapus (FK `RESTRICT`).
+     Dokumentasi lengkap (ERD, flowchart migrasi/seed/pemakaian per modul, aturan API): [`MASTER_DATA.md`](MASTER_DATA.md).
    - **Logika Tree Branch**:
      Untuk mendapatkan silsilah atasan atau bawahan, backend menjalankan *Recursive CTE*:
      ```sql
