@@ -25,8 +25,8 @@ export interface UserSessionPayload {
     id: string
     nik: string
     fullName: string
-    jobTitle: string
-    department: string | null
+    jobTitle: { id: string; code: string; name: string; level: string }
+    department: { id: string; code: string; name: string } | null
     managerId: string | null
   } | null
 }

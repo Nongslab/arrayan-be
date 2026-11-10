@@ -9,6 +9,54 @@ const ACCESS_TOKEN_EXPIRY = '15m'
 const ACCESS_TOKEN_MAX_AGE = 15 * 60 // 15 menit
 const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 // 7 hari
 
+/** Skema response user sesi (dipakai login, refresh, me). Selaras dengan UserSessionPayload. */
+const userResponseSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    email: { type: 'string' },
+    role: {
+      type: 'object',
+      properties: {
+        code: { type: 'string' },
+        name: { type: 'string' },
+        permissions: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    employee: {
+      type: 'object',
+      nullable: true,
+      properties: {
+        id: { type: 'string' },
+        nik: { type: 'string' },
+        fullName: { type: 'string' },
+        jobTitle: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            code: { type: 'string', examples: ['HR_SYSTEM_ADMIN'] },
+            name: { type: 'string', examples: ['HR & System Admin'] },
+            level: {
+              type: 'string',
+              enum: ['MANAGEMENT', 'SR_MANAGER', 'MANAGER', 'SUPERVISOR', 'STAFF'],
+            },
+          },
+        },
+        department: {
+          type: 'object',
+          nullable: true,
+          properties: {
+            id: { type: 'string' },
+            code: { type: 'string', examples: ['HRD'] },
+            name: { type: 'string', examples: ['People & Culture'] },
+          },
+        },
+        managerId: { type: 'string', nullable: true },
+      },
+    },
+  },
+} as const
+
 export const ACCESS_TOKEN_COOKIE = 'arrayan_access_token'
 export const REFRESH_TOKEN_COOKIE = 'arrayan_refresh_token'
 const REFRESH_COOKIE_PATH = '/api/auth'
@@ -59,33 +107,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
             message: { type: 'string' },
             accessToken: { type: 'string' },
             refreshToken: { type: 'string' },
-            user: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                email: { type: 'string' },
-                role: {
-                  type: 'object',
-                  properties: {
-                    code: { type: 'string' },
-                    name: { type: 'string' },
-                    permissions: { type: 'array', items: { type: 'string' } },
-                  },
-                },
-                employee: {
-                  type: 'object',
-                  nullable: true,
-                  properties: {
-                    id: { type: 'string' },
-                    nik: { type: 'string' },
-                    fullName: { type: 'string' },
-                    jobTitle: { type: 'string' },
-                    department: { type: 'string', nullable: true },
-                    managerId: { type: 'string', nullable: true },
-                  },
-                },
-              },
-            },
+            user: userResponseSchema,
           },
         },
         400: {
@@ -192,33 +214,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
             message: { type: 'string' },
             accessToken: { type: 'string' },
             refreshToken: { type: 'string' },
-            user: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                email: { type: 'string' },
-                role: {
-                  type: 'object',
-                  properties: {
-                    code: { type: 'string' },
-                    name: { type: 'string' },
-                    permissions: { type: 'array', items: { type: 'string' } },
-                  },
-                },
-                employee: {
-                  type: 'object',
-                  nullable: true,
-                  properties: {
-                    id: { type: 'string' },
-                    nik: { type: 'string' },
-                    fullName: { type: 'string' },
-                    jobTitle: { type: 'string' },
-                    department: { type: 'string', nullable: true },
-                    managerId: { type: 'string', nullable: true },
-                  },
-                },
-              },
-            },
+            user: userResponseSchema,
           },
         },
         400: {
@@ -337,33 +333,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           type: 'object',
           properties: {
             statusCode: { type: 'number' },
-            user: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                email: { type: 'string' },
-                role: {
-                  type: 'object',
-                  properties: {
-                    code: { type: 'string' },
-                    name: { type: 'string' },
-                    permissions: { type: 'array', items: { type: 'string' } },
-                  },
-                },
-                employee: {
-                  type: 'object',
-                  nullable: true,
-                  properties: {
-                    id: { type: 'string' },
-                    nik: { type: 'string' },
-                    fullName: { type: 'string' },
-                    jobTitle: { type: 'string' },
-                    department: { type: 'string', nullable: true },
-                    managerId: { type: 'string', nullable: true },
-                  },
-                },
-              },
-            },
+            user: userResponseSchema,
           },
         },
         401: {

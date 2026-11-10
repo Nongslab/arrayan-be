@@ -1,9 +1,48 @@
 import crypto from 'node:crypto'
 import bcrypt from 'bcrypt'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import type { LoginInput, UserSessionPayload } from './auth.schema.js'
 
 const REFRESH_TOKEN_EXPIRY_DAYS = 7
+
+/** Relasi yang dibutuhkan untuk membentuk session payload. */
+const sessionInclude = {
+  role: true,
+  employee: { include: { jobTitle: true, department: true } },
+} satisfies Prisma.UserInclude
+
+type UserWithSession = Prisma.UserGetPayload<{ include: typeof sessionInclude }>
+
+export function toSessionPayload(user: UserWithSession): UserSessionPayload {
+  const { employee } = user
+  return {
+    id: user.id,
+    email: user.email,
+    role: {
+      code: user.role.code,
+      name: user.role.name,
+      permissions: (user.role.permissions as string[]) || [],
+    },
+    employee: employee
+      ? {
+          id: employee.id,
+          nik: employee.nik,
+          fullName: employee.fullName,
+          jobTitle: {
+            id: employee.jobTitle.id,
+            code: employee.jobTitle.code,
+            name: employee.jobTitle.name,
+            level: employee.jobTitle.level,
+          },
+          department: employee.department
+            ? { id: employee.department.id, code: employee.department.code, name: employee.department.name }
+            : null,
+          managerId: employee.managerId,
+        }
+      : null,
+  }
+}
 
 export function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex')
@@ -20,10 +59,7 @@ export const authService = {
   async validateUser(input: LoginInput): Promise<UserSessionPayload> {
     const user = await prisma.user.findUnique({
       where: { email: input.email.toLowerCase().trim() },
-      include: {
-        role: true,
-        employee: true,
-      },
+      include: sessionInclude,
     })
 
     if (!user) {
@@ -45,25 +81,7 @@ export const authService = {
       data: { lastLoginAt: new Date() },
     })
 
-    return {
-      id: user.id,
-      email: user.email,
-      role: {
-        code: user.role.code,
-        name: user.role.name,
-        permissions: (user.role.permissions as string[]) || [],
-      },
-      employee: user.employee
-        ? {
-            id: user.employee.id,
-            nik: user.employee.nik,
-            fullName: user.employee.fullName,
-            jobTitle: user.employee.jobTitle,
-            department: user.employee.department,
-            managerId: user.employee.managerId,
-          }
-        : null,
-    }
+    return toSessionPayload(user)
   },
 
   async createRefreshToken(userId: string): Promise<string> {
@@ -127,34 +145,13 @@ export const authService = {
   async getUserProfile(userId: string): Promise<UserSessionPayload> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        role: true,
-        employee: true,
-      },
+      include: sessionInclude,
     })
 
     if (!user || !user.isActive) {
       throw new Error('User tidak ditemukan atau tidak aktif')
     }
 
-    return {
-      id: user.id,
-      email: user.email,
-      role: {
-        code: user.role.code,
-        name: user.role.name,
-        permissions: (user.role.permissions as string[]) || [],
-      },
-      employee: user.employee
-        ? {
-            id: user.employee.id,
-            nik: user.employee.nik,
-            fullName: user.employee.fullName,
-            jobTitle: user.employee.jobTitle,
-            department: user.employee.department,
-            managerId: user.employee.managerId,
-          }
-        : null,
-    }
+    return toSessionPayload(user)
   },
 }
