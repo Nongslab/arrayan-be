@@ -42,7 +42,7 @@ flowchart LR
 | 6 | US-5.3 Approval berjenjang | 🟡 Q-1…Q-4 |
 | 7 | US-3.1 Engine status kehadiran | ✅ |
 | 8 | US-3.2 Clock-in / clock-out aplikasi | 🟡 Q-6 |
-| 9 | US-3.4 Rekap kehadiran | 🟢 |
+| 9 | US-3.4 Rekap kehadiran | ✅ |
 | 10 | US-6.5 Manajemen training & remarks | 🟢 |
 | 11 | US-4.1 Dashboard 5-in-1 | 🟢 (setelah 1, 4, 7, 10) |
 | 12 | US-6.4 Kalender perusahaan & personal | 🟢 |
@@ -104,10 +104,11 @@ flowchart LR
 - `POST /api/attendance/devices/sync` — autentikasi per perangkat, idempoten (log duplikat diabaikan), memicu US-3.1.
 - Protokol tergantung merek (mis. ZKTeco ADMS push / pull via SDK) — butuh endpoint publik (VPS) atau agent di jaringan kantor.
 
-### US-3.4 Rekap kehadiran 🟢
+### US-3.4 Rekap kehadiran ✅ selesai
 **Sebagai** karyawan/atasan/HR, **saya ingin** melihat rekap kehadiran, **agar** keterlambatan & ketidakhadiran terpantau.
 - `GET /api/attendance/me?month=` (diri sendiri), `GET /api/attendance/team?month=` (bawahan di subtree, reuse pohon organisasi), `GET /api/attendance?month=&departmentId=` (SUPER_ADMIN/Management).
 - Ringkasan bulanan: hari hadir, terlambat (total menit), absen, cuti, sakit.
+- **Implementasi:** `GET /api/attendance/me`, `/team` (seluruh bawahan semua level), `/` (permission `all`/`company.read_all` — SUPER_ADMIN & Management; filter departemen + sub-departemen, paginasi), `/employees/:id` (diri sendiri, atasan di rantai atas, atau HR/Management; lainnya 404). Opsi `includeDays=true` untuk status per hari. Karyawan yang keluar di tengah rentang tetap direkap sampai tanggal keluar. Query di-batch per jenis data (bukan per karyawan).
 
 ### US-3.5 Koreksi absensi oleh HR 🟢
 **Sebagai** HR, **saya ingin** mengoreksi absensi (lupa clock-out, mesin rusak), **agar** rekap akurat.

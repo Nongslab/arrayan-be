@@ -3,29 +3,13 @@ import type { FastifyInstance } from 'fastify'
 import { prisma } from '../../lib/prisma.js'
 import { addDays, fromDateOnly, toDateOnly } from '../../lib/dates.js'
 import { bearer, createTestApp, createUserWithRole, loginAs, uniqueSuffix } from '../../test/helpers.js'
-import { todayInJakarta } from '../employee/employee.schema.js'
+import { pastMondayWithoutHolidays } from '../../test/calendar.js'
 
 const SUFFIX = uniqueSuffix()
 const nik = (name: string) => `IATT-${SUFFIX}-${name}`
 const email = (name: string) => `iatt.${name}.${SUFFIX}@arrayan.test`.toLowerCase()
 const tokenFrom = (link: string) => new URL(link).searchParams.get('token')!
 
-/**
- * Senin minimal 14 hari sebelum hari ini (semua tanggal uji sudah lewat) yang minggunya
- * (Senin s.d. Senin berikutnya) bebas hari libur — agar test tidak bergantung pada kalender.
- */
-async function pastMondayWithoutHolidays(): Promise<string> {
-  const holidays = new Set(
-    (await prisma.holiday.findMany({ where: { isActive: true }, select: { date: true } })).map((h) => toDateOnly(h.date)),
-  )
-  let d = addDays(fromDateOnly(todayInJakarta()), -14)
-  for (;;) {
-    while (d.getUTCDay() !== 1) d = addDays(d, -1)
-    const week = Array.from({ length: 8 }, (_, i) => toDateOnly(addDays(d, i)))
-    if (!week.some((date) => holidays.has(date))) return toDateOnly(d)
-    d = addDays(d, -1)
-  }
-}
 let MON = ''
 const day = (offset: number) => toDateOnly(addDays(fromDateOnly(MON), offset))
 /** Waktu lokal Jakarta pada hari ke-`offset`. */
