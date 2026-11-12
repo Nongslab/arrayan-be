@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import type { AuditDb } from '../../lib/audit.js'
 import { HttpError } from '../../lib/http-error.js'
+import { isValidIpRange } from '../../lib/geo.js'
 import {
   BSSID_PATTERN,
   CODE_PATTERN,
@@ -202,6 +203,7 @@ type OfficeLocationRow = BaseRow & {
   radiusMeters: number
   wifiSsids: string[]
   wifiBssids: string[]
+  allowedIpRanges: string[]
   timezone: string
 }
 
@@ -222,6 +224,11 @@ const officeLocation: MasterEntityConfig = {
       .array(z.string().trim().toUpperCase().regex(BSSID_PATTERN, 'format MAC AA:BB:CC:DD:EE:FF'))
       .max(20)
       .optional(),
+    allowedIpRanges: z
+      .array(z.string().trim().refine(isValidIpRange, 'harus alamat IP atau CIDR, mis. 203.0.113.0/24'))
+      .max(20)
+      .optional()
+      .describe('IP publik / CIDR internet kantor — alternatif verifikasi lokasi absensi via web'),
     timezone: z.string().refine(isValidTimezone, 'timezone IANA tidak dikenal, mis. Asia/Jakarta').optional(),
   },
   response: z.object({
@@ -232,6 +239,7 @@ const officeLocation: MasterEntityConfig = {
     radiusMeters: z.number().int(),
     wifiSsids: z.array(z.string()),
     wifiBssids: z.array(z.string()),
+    allowedIpRanges: z.array(z.string()),
     timezone: z.string(),
   }),
   serialize: (row: OfficeLocationRow) => ({
@@ -242,6 +250,7 @@ const officeLocation: MasterEntityConfig = {
     radiusMeters: row.radiusMeters,
     wifiSsids: row.wifiSsids,
     wifiBssids: row.wifiBssids,
+    allowedIpRanges: row.allowedIpRanges,
     timezone: row.timezone,
   }),
   orderBy: { name: 'asc' },
@@ -254,6 +263,7 @@ const officeLocation: MasterEntityConfig = {
     radiusMeters: 150,
     wifiSsids: ['Arryan-Office'],
     wifiBssids: ['AA:BB:CC:DD:EE:FF'],
+    allowedIpRanges: ['203.0.113.0/24'],
     timezone: 'Asia/Jakarta',
   },
 }
