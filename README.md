@@ -74,13 +74,17 @@ Variabel yang dipakai:
 | :--- | :--- |
 | `PORT` | Port API (default `4000`) |
 | `NODE_ENV` | `development` / `production` (production → cookie `Secure` + `SameSite=None`) |
-| `CORS_ORIGIN` | Origin frontend (default `http://localhost:5173`) |
+| `CORS_ORIGIN` | Origin frontend, boleh beberapa dipisah koma (default `http://localhost:5173`; production wajib https) |
 | `DATABASE_URL` | Koneksi PostgreSQL; nilai di `.env.example` cocok dengan `docker-compose.yml` |
-| `JWT_SECRET`, `COOKIE_SECRET` | **Wajib, minimal 32 karakter.** Server menolak start jika kosong. Production: `openssl rand -hex 32` |
+| `JWT_SECRET`, `COOKIE_SECRET` | **Wajib, minimal 32 karakter, harus berbeda.** Production: `openssl rand -hex 32` (nilai contoh `.env.example` ditolak) |
 | `TRUST_PROXY` | `true` jika API berada di belakang nginx, agar IP klien terbaca untuk login limiter |
 | `APP_BASE_URL` | URL frontend untuk link aktivasi akun (default `http://localhost:5173`) |
 | `INVITATION_DRIVER` | Kanal undangan aktivasi. Saat ini `log` — link ditampilkan di log & response API **hanya di luar production** |
+| `LOG_LEVEL` | `fatal`…`trace`/`silent` (default `info`). Header `Authorization`, cookie, password & token otomatis disamarkan di log |
+| `DOCS_ENABLED` | Swagger UI `/docs` — default aktif di dev, **nonaktif di production** kecuali `true` |
 | `TEST_DATABASE_URL` | DB khusus integration test (nama wajib mengandung `test`, mis. `arrayan_hris_test`); dibuat otomatis saat `npm run test:int` |
+
+Semua variabel divalidasi sekali saat start oleh [`src/lib/config.ts`](src/lib/config.ts). Bila ada yang salah, server berhenti dan menyebutkan **semua** masalah sekaligus. Mode `NODE_ENV=production` menambah aturan: secret bukan nilai contoh, `CORS_ORIGIN` & `APP_BASE_URL` wajib https.
 
 ### 4. Menjalankan Database PostgreSQL
 ```bash

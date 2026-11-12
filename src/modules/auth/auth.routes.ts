@@ -12,6 +12,7 @@ import {
 import { authenticate } from '../../middlewares/auth.middleware.js'
 import { createLoginLimiter, loginLimiter } from './login-limiter.js'
 import type { FastifyReply } from 'fastify'
+import { appConfig } from '../../lib/config.js'
 
 const ACCESS_TOKEN_EXPIRY = '15m'
 const ACCESS_TOKEN_MAX_AGE = 15 * 60 // 15 menit
@@ -70,7 +71,7 @@ export const REFRESH_TOKEN_COOKIE = 'arrayan_refresh_token'
 const REFRESH_COOKIE_PATH = '/api/auth'
 
 function setAuthCookies(reply: FastifyReply, accessToken: string, refreshToken: string) {
-  const isProduction = process.env.NODE_ENV === 'production'
+  const { isProduction } = appConfig
   const base = {
     httpOnly: true,
     secure: isProduction,
