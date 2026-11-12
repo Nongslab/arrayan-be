@@ -120,9 +120,11 @@ model Employee {
   workShift        WorkShift?      @relation(fields: [workShiftId], references: [id], onDelete: Restrict)
 
   // Tree Branch Hierarchy: Self-referencing Foreign Key
-  managerId    String?    @map("manager_id")
-  manager      Employee?  @relation("EmployeeHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
-  subordinates Employee[] @relation("EmployeeHierarchy")
+  managerId               String?                  @map("manager_id")
+  manager                 Employee?                @relation("EmployeeHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
+  subordinates            Employee[]               @relation("EmployeeHierarchy")
+  leaveRequests           LeaveRequest[]
+  leaveBalanceAdjustments LeaveBalanceAdjustment[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -253,18 +255,20 @@ enum LeaveCategory {
 
 /// Jenis cuti / izin. category dipakai untuk logika bisnis (mis. widget "Yang Sakit Hari Ini").
 model LeaveType {
-  id                 String        @id @default(uuid())
-  code               String        @unique
+  id                 String                   @id @default(uuid())
+  code               String                   @unique
   name               String
   category           LeaveCategory
   /// Kuota default per tahun (hari). 0 = tidak dibatasi kuota.
-  defaultQuota       Int           @default(0) @map("default_quota")
-  isPaid             Boolean       @default(true) @map("is_paid")
-  requiresAttachment Boolean       @default(false) @map("requires_attachment")
-  deductsAnnualLeave Boolean       @default(false) @map("deducts_annual_leave")
-  isActive           Boolean       @default(true) @map("is_active")
-  createdAt          DateTime      @default(now()) @map("created_at")
-  updatedAt          DateTime      @updatedAt @map("updated_at")
+  defaultQuota       Int                      @default(0) @map("default_quota")
+  isPaid             Boolean                  @default(true) @map("is_paid")
+  requiresAttachment Boolean                  @default(false) @map("requires_attachment")
+  deductsAnnualLeave Boolean                  @default(false) @map("deducts_annual_leave")
+  leaveRequests      LeaveRequest[]
+  balanceAdjustments LeaveBalanceAdjustment[]
+  isActive           Boolean                  @default(true) @map("is_active")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
 
   @@map("leave_types")
 }
@@ -384,4 +388,55 @@ model AuditLog {
   @@index([actorUserId])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// =============================================================
+// 6. CUTI & IZIN (Fase 5)
+// =============================================================
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// Pengajuan cuti / izin / sakit. Approval berjenjang (US-5.3) menyusul.
+model LeaveRequest {
+  id           String             @id @default(uuid())
+  employeeId   String             @map("employee_id")
+  employee     Employee           @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  leaveTypeId  String             @map("leave_type_id")
+  leaveType    LeaveType          @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  startDate    DateTime           @map("start_date") @db.Date
+  endDate      DateTime           @map("end_date") @db.Date
+  /// Jumlah hari yang dihitung (hari kerja, atau hari kalender untuk cuti melahirkan)
+  days         Int
+  /// Pembagian hari per tahun kalender saat diajukan, mis. {"2026": 4, "2027": 2}
+  daysByYear   Json               @map("days_by_year")
+  reason       String?
+  status       LeaveRequestStatus @default(PENDING)
+  cancelledAt  DateTime?          @map("cancelled_at")
+  cancelReason String?            @map("cancel_reason")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  @@index([employeeId, startDate])
+  @@index([status, startDate])
+  @@map("leave_requests")
+}
+
+/// Penyesuaian saldo cuti oleh HR (+/- hari) untuk satu tahun.
+model LeaveBalanceAdjustment {
+  id          String    @id @default(uuid())
+  employeeId  String    @map("employee_id")
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  leaveTypeId String    @map("leave_type_id")
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  year        Int
+  days        Int
+  reason      String
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([employeeId, leaveTypeId, year])
+  @@map("leave_balance_adjustments")
 }

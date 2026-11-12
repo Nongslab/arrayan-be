@@ -11,6 +11,7 @@ import { authRoutes } from './modules/auth/auth.routes.js'
 import { masterRoutes, MASTER_SWAGGER_TAGS } from './modules/master/master.routes.js'
 import { employeeRoutes } from './modules/employee/employee.routes.js'
 import { auditRoutes } from './modules/audit/audit.routes.js'
+import { leaveRoutes } from './modules/leave/leave.routes.js'
 
 /**
  * Field sensitif yang disamarkan dari log (defense in depth — serializer bawaan Fastify
@@ -117,6 +118,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       tags: [
         { name: 'Auth', description: 'Otentikasi, Sesi, dan Keamanan Pengguna' },
         { name: 'Employees', description: 'Data karyawan & pohon organisasi (Tree Branch)' },
+        { name: 'Leaves', description: 'Cuti, izin & sakit: saldo, pengajuan, pembatalan' },
         { name: 'Audit Log', description: 'Jejak aksi admin & event keamanan (SUPER_ADMIN)' },
         ...MASTER_SWAGGER_TAGS,
       ],
@@ -160,6 +162,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await fastify.register(masterRoutes, { prefix: '/api/master' })
   await fastify.register(employeeRoutes, { prefix: '/api/employees' })
   await fastify.register(auditRoutes, { prefix: '/api/audit-logs' })
+  await fastify.register(leaveRoutes, { prefix: '/api/leaves' })
 
   return fastify
 }

@@ -36,9 +36,9 @@ flowchart LR
 | :--- | :--- | :---: |
 | 1 | US-2.7 Data pribadi karyawan (birthDate, kontak) | ✅ |
 | 2 | US-2.9 Pelacakan masa probation | ✅ |
-| 3 | US-5.1 Saldo cuti tahunan | 🟡 Q-5 |
-| 4 | US-5.2 Pengajuan cuti / izin / sakit (tanpa lampiran dulu) | 🟢 |
-| 5 | US-5.4 Pembatalan pengajuan | 🟢 |
+| 3 | US-5.1 Saldo cuti tahunan | ✅ (aturan jatah sementara, Q-5) |
+| 4 | US-5.2 Pengajuan cuti / izin / sakit (tanpa lampiran dulu) | ✅ |
+| 5 | US-5.4 Pembatalan pengajuan | ✅ |
 | 6 | US-5.3 Approval berjenjang | 🟡 Q-1…Q-4 |
 | 7 | US-3.1 Engine status kehadiran | 🟢 |
 | 8 | US-3.2 Clock-in / clock-out aplikasi | 🟡 Q-6 |
@@ -116,19 +116,21 @@ flowchart LR
 
 ## Fase 5 — Cuti, Izin & Approval (PRD Module 3 & 5 sumber data)
 
-### US-5.1 Saldo cuti tahunan 🟡 Q-5
+### US-5.1 Saldo cuti tahunan ✅ selesai (aturan jatah sementara — menunggu Q-5)
 **Sebagai** karyawan, **saya ingin** melihat sisa jatah cuti (PRD: "cek sisa jatah cuti"), **agar** bisa merencanakan cuti.
 - Tabel `LeaveBalance` (karyawan, `LeaveType`, tahun, jatah, terpakai, penyesuaian).
 - Jatah awal dari `LeaveType.defaultQuota`; aturan prorata tahun pertama & carry-over sesuai Q-5.
 - Cuti bersama (`Holiday.kind = COLLECTIVE_LEAVE`) memotong cuti tahunan.
-- `GET /api/leaves/balance` (sendiri), `PATCH` penyesuaian oleh HR (audit log).
+- `GET /api/leaves/balance` (sendiri), `GET /api/leaves/balance/:employeeId` dan `POST /api/leaves/balance/adjustments` (HR, audit log).
+- **Implementasi:** saldo dihitung (tidak disimpan) = jatah + penyesuaian − cuti bersama − APPROVED − PENDING. Aturan jatah ada di satu fungsi `entitlementFor()` ([`leave.rules.ts`](../src/modules/leave/leave.rules.ts)); default sementara: penuh `defaultQuota` per tahun kalender, tanpa prorata/carry-over. Jenis dengan `deductsAnnualLeave` memakai saldo cuti tahunan.
 
-### US-5.2 Pengajuan cuti / izin / sakit 🟢 (lampiran 🟡 Q-8)
+### US-5.2 Pengajuan cuti / izin / sakit ✅ selesai (lampiran menyusul — 🟡 Q-8)
 **Sebagai** karyawan, **saya ingin** mengajukan cuti/izin/sakit, **agar** ketidakhadiran tercatat resmi.
 - `POST /api/leaves` (jenis, tanggal mulai–selesai, alasan, lampiran bila `LeaveType.requiresAttachment`).
 - Jumlah hari dihitung dari hari kerja shift karyawan, tidak termasuk hari libur.
 - Tolak: tumpang tindih dengan pengajuan lain, saldo kurang (bila berkuota), tanggal tidak valid.
-- `GET /api/leaves/me`, `GET /api/leaves/:id`.
+- `GET /api/leaves/me`, `GET /api/leaves/:id`, `GET /api/leaves` (HR).
+- **Implementasi:** pembagian hari per tahun disimpan saat diajukan (`daysByYear`) agar saldo tidak berubah bila hari libur diedit belakangan; pengajuan per karyawan diserialkan (advisory lock) sehingga pengajuan bersamaan tidak melampaui saldo. **Asumsi:** cuti melahirkan dihitung hari kalender, jenis lain hari kerja shift (default Senin–Jumat bila tanpa shift). Jenis yang mensyaratkan lampiran ditandai `attachmentRequired: true` sampai US-2.8 tersedia.
 
 ### US-5.3 Approval berjenjang 🟡 Q-1…Q-4
 **Sebagai** atasan, **saya ingin** menyetujui/menolak pengajuan bawahan, **agar** approval mengikuti rantai organisasi (PRD: approval line / tree branch).
@@ -137,7 +139,7 @@ flowchart LR
 - Status: `PENDING → APPROVED/REJECTED`; saldo dipotong saat final approved.
 - Penanganan tanpa atasan, override HR, delegasi sesuai Q-2…Q-4. Semua keputusan tercatat di audit log.
 
-### US-5.4 Pembatalan pengajuan 🟢
+### US-5.4 Pembatalan pengajuan ✅ selesai
 - Karyawan membatalkan pengajuan miliknya selama masih `PENDING`; setelah `APPROVED` hanya HR (saldo dikembalikan, audit log).
 
 ### US-5.5 Reimbursement 🟡 Q-10
