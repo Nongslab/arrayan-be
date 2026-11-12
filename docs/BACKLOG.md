@@ -45,7 +45,7 @@ flowchart LR
 | 9 | US-3.4 Rekap kehadiran | ✅ |
 | 10 | US-6.5 Manajemen training & remarks | ✅ |
 | 11 | US-4.1 Dashboard 5-in-1 | ✅ |
-| 12 | US-6.4 Kalender perusahaan & personal | 🟢 |
+| 12 | US-6.4 Kalender perusahaan & personal | ✅ |
 | 13 | US-6.1–6.3 KPI (penilaian, visibilitas, grafik) | 🟡 Q-9 |
 | 14 | US-2.8 Dokumen karyawan terenkripsi | 🟡 Q-8 |
 | 15 | US-3.5 Koreksi absensi oleh HR | ✅ |
@@ -183,11 +183,12 @@ flowchart LR
 ### US-6.3 Data grafik progres KPI 🟢
 - `GET /api/kpi/progress?employeeId=&from=&to=` → deret skor per periode (bulanan/kuartalan) untuk chart FE; versi agregat per tim.
 
-### US-6.4 Kalender perusahaan & personal 🟢
+### US-6.4 Kalender perusahaan & personal ✅ selesai
 **Sebagai** karyawan, **saya ingin** satu kalender berisi libur, ulang tahun, event kantor, training, dan cuti saya.
 - Master/entitas `CalendarEvent` (event kantor) — input hanya SUPER_ADMIN (PRD "Pencegahan Input").
 - `GET /api/calendar?from=&to=` menggabungkan: `Holiday`, ulang tahun (US-2.7), `CalendarEvent`, training yang diikuti (US-6.5), cuti/izin pribadi (US-5.2).
 - `?view=master` (SUPER_ADMIN): seluruh jadwal karyawan.
+- **Implementasi:** `GET /api/calendar?from&to&view` (maks. 92 hari) — satu daftar item bertipe `HOLIDAY`/`BIRTHDAY`/`EVENT`/`TRAINING`/`LEAVE` (tanggal lokal, `allDay`, jam HH:mm), terurut. Cuti personal = PENDING & APPROVED milik sendiri; master = seluruh cuti & training dengan nama karyawan. Event kantor `POST/PATCH /api/calendar/events` (HR; tanggal, jam opsional, lokasi; `isActive: false` untuk menyembunyikan) dengan audit log.
 
 ### US-6.5 Manajemen training & remarks ✅ selesai
 **Sebagai** HR, **saya ingin** menjadwalkan training dan peserta, **agar** jadwal muncul di dashboard & kalender peserta.

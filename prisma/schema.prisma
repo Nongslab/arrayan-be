@@ -549,3 +549,25 @@ model TrainingParticipant {
   @@index([employeeId])
   @@map("training_participants")
 }
+
+// =============================================================
+// 9. KALENDER (PRD Module 5)
+// =============================================================
+/// Event kantor (gathering, ulang tahun perusahaan, dll). Input hanya HR GA.
+model CalendarEvent {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  location    String?
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime @map("end_date") @db.Date
+  /// HH:mm waktu lokal kantor; kosong = sepanjang hari
+  startTime   String?  @map("start_time")
+  endTime     String?  @map("end_time")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([startDate, endDate])
+  @@map("calendar_events")
+}
