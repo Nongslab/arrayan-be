@@ -54,13 +54,14 @@ Schema, migrasi (dengan backfill) dan seed master data sudah merged (PR #11). Re
    - Endpoint publik menerima token aktivasi & password baru dari karyawan.
    - Validasi kekuatan password (minimal 8 karakter, huruf besar, huruf kecil, angka, simbol).
    - Update password hash, ubah status user menjadi `ACTIVE`, dan hanguskan token aktivasi.
-4. **US-2.4 (Feature): Organization Tree Branch Hierarchy API (`GET /api/employees/tree`)**
+4. **US-2.4 (Feature): Organization Tree Branch Hierarchy API (`GET /api/employees/tree`)** — ✅ selesai
    - Transformasi relasi *self-referencing* `managerId` menjadi struktur pohon bersarang (*nested JSON tree*).
    - Mendukung multi-root (Top Management) hingga level Staff bawahan (`Management → Sr. Manager → Manager → Supervisor → Staff`).
-   - Dilengkapi proteksi *circular reference check* (mencegah atasan membawahi dirinya sendiri).
-5. **US-2.5 (Feature): Employee List, Detail & Search API (`GET /api/employees`, `GET /api/employees/:id`)**
+   - Dilengkapi proteksi *circular reference check*: saat membaca, siklus diputus & dilaporkan di `meta.cycleBreaks`; pencegahan saat menulis `managerId` dikerjakan bersama US-2.2.
+   - `?rootId=` untuk subtree; children diurutkan berdasarkan level jabatan lalu nama.
+5. **US-2.5 (Feature): Employee List, Detail & Search API (`GET /api/employees`, `GET /api/employees/:id`)** — ✅ selesai
    - List karyawan dengan paginasi (`page`, `limit`).
-   - Multi-filter: `departmentId`, `employmentType` (PROBATION, KARTAP, PKL), `status` (ACTIVE, PENDING_ACTIVATION), dan pencarian keyword nama/NIK.
+   - Multi-filter: `departmentId` (+ `includeSubDepartments`), `jobTitleId`, `managerId`, `employmentType` (PROBATION, KARTAP, PKL), `accountStatus` (ACTIVE, INACTIVE, NO_ACCOUNT; `PENDING_ACTIVATION` ditambah bersama US-2.2), dan pencarian keyword nama/NIK.
    - Menampilkan relasi atasan langsung (`manager: { id, fullName, jobTitle: { id, code, name, level } }`); `jobTitle` dan `department` berupa objek master data.
 
 ---

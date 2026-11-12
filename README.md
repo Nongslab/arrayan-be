@@ -40,6 +40,7 @@ arrayan-backend/
 │   ├── middlewares/         # authenticate (Bearer/cookie) & authorize (RBAC)
 │   ├── modules/
 │   │   ├── auth/            # Routes, service, Zod schema, login limiter, & tests
+│   │   ├── employee/        # API karyawan /api/employees (list, detail, tree branch)
 │   │   └── master/          # API master data /api/master/* (route generik + aturan validasi)
 │   ├── test/                # Global setup & helper integration test
 │   ├── app.ts               # buildApp(): plugin CORS/cookie/JWT/Swagger + routes (tanpa listen)
