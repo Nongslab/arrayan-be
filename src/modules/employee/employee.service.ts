@@ -2,7 +2,8 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import { HttpError } from '../../lib/http-error.js'
 import { buildEmployeeTree, HIERARCHY_RANK, type TreeNode } from './employee.tree.js'
-import type { EmployeeListQuery } from './employee.schema.js'
+import { todayInJakarta, type EmployeeListQuery } from './employee.schema.js'
+import { addDays, fromDateOnly } from '../../lib/dates.js'
 import { birthdaysInRange } from './employee.birthdays.js'
 
 /** Siapa yang meminta data — menentukan visibilitas data pribadi. */
@@ -46,6 +47,7 @@ export function serializeEmployee(row: EmployeeRow, includePersonal = true) {
     fullName: row.fullName,
     employmentType: row.employmentType,
     joinDate: row.joinDate.toISOString(),
+    probationEndDate: row.probationEndDate ? row.probationEndDate.toISOString().slice(0, 10) : null,
     status: row.status,
     exitDate: row.exitDate ? row.exitDate.toISOString().slice(0, 10) : null,
     jobTitle: row.jobTitle,
@@ -113,6 +115,10 @@ export const employeeService = {
     if (query.managerId) where.managerId = query.managerId
     if (query.employmentType) where.employmentType = query.employmentType
     if (query.status !== 'ALL') where.status = query.status
+    if (query.probationEndingWithinDays !== undefined) {
+      where.employmentType = 'PROBATION'
+      where.probationEndDate = { not: null, lte: addDays(fromDateOnly(todayInJakarta()), query.probationEndingWithinDays) }
+    }
     if (query.accountStatus) and.push(accountStatusWhere(query.accountStatus))
     if (query.q) {
       and.push({
@@ -128,7 +134,10 @@ export const employeeService = {
       prisma.employee.findMany({
         where,
         include: employeeInclude,
-        orderBy: [{ fullName: 'asc' }, { nik: 'asc' }],
+        orderBy:
+          query.probationEndingWithinDays !== undefined
+            ? [{ probationEndDate: 'asc' }, { fullName: 'asc' }]
+            : [{ fullName: 'asc' }, { nik: 'asc' }],
         skip: (query.page - 1) * query.limit,
         take: query.limit,
       }),

@@ -28,6 +28,16 @@ export const employeeListQuerySchema = z.object({
     .default('ACTIVE')
     .describe('Status karyawan. Default ACTIVE; INACTIVE = karyawan keluar'),
   accountStatus: accountStatusSchema.optional().describe('Status akun login karyawan'),
+  probationEndingWithinDays: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(365)
+    .optional()
+    .describe(
+      'Karyawan PROBATION yang masa probation-nya berakhir ≤ N hari lagi, TERMASUK yang sudah lewat namun belum ' +
+        'diangkat. Diurutkan dari yang paling mendesak',
+    ),
   ...paginationQuery,
 })
 
@@ -71,6 +81,10 @@ const employeeFields = {
   fullName: z.string().trim().min(2, 'minimal 2 karakter').max(120),
   employmentType: employmentTypeSchema.optional().describe('Default PROBATION'),
   joinDate: dateOnly.optional().describe('yyyy-MM-dd. Default hari ini'),
+  probationEndDate: dateOnly
+    .nullable()
+    .optional()
+    .describe('Akhir masa probation (yyyy-MM-dd). Default joinDate + 6 bulan untuk PROBATION'),
   jobTitleId: z.string().uuid('harus UUID'),
   departmentId: optionalRef,
   officeLocationId: optionalRef,
@@ -138,6 +152,7 @@ export const employeeSchema = z.object({
   fullName: z.string(),
   employmentType: employmentTypeSchema,
   joinDate: z.string().describe('ISO-8601'),
+  probationEndDate: z.string().nullable().describe('yyyy-MM-dd'),
   status: employeeStatusSchema,
   exitDate: z.string().nullable().describe('yyyy-MM-dd, terisi bila INACTIVE'),
   jobTitle,
