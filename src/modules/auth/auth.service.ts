@@ -4,6 +4,7 @@ import { prisma } from '../../lib/prisma.js'
 import { appConfig } from '../../lib/config.js'
 import { generateOpaqueToken, hashToken } from '../../lib/tokens.js'
 import { getInvitationSender } from '../../lib/notifications/invitation-sender.js'
+import { recordAudit, withActor, type AuditContext } from '../../lib/audit.js'
 import {
   consumeAccountToken,
   issueAccountToken,
@@ -178,7 +179,7 @@ export const authService = {
    * US-2.3: aktivasi akun dengan token undangan. Token harus ACTIVATION, belum dipakai,
    * belum kedaluwarsa, milik akun PENDING_ACTIVATION yang karyawannya masih aktif.
    */
-  async activateAccount(input: ActivateInput): Promise<{ email: string }> {
+  async activateAccount(input: ActivateInput, ctx: AuditContext): Promise<{ email: string }> {
     const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS)
 
     return prisma.$transaction(async (tx) => {
@@ -187,6 +188,12 @@ export const authService = {
         throw new AuthFlowError(invalidMessage)
       }
       await tx.user.update({ where: { id: user.id }, data: { passwordHash, status: 'ACTIVE' } })
+      await recordAudit(tx, withActor(ctx, user), {
+        action: 'auth.account_activated',
+        entityType: 'user',
+        entityId: user.id,
+        changes: { status: { from: 'PENDING_ACTIVATION', to: 'ACTIVE' } },
+      })
       return { email: user.email }
     })
   },
@@ -220,7 +227,7 @@ export const authService = {
   },
 
   /** Reset password dengan token; seluruh sesi (refresh token) dicabut. */
-  async resetPassword(input: ResetPasswordInput): Promise<{ email: string }> {
+  async resetPassword(input: ResetPasswordInput, ctx: AuditContext): Promise<{ email: string }> {
     const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS)
 
     return prisma.$transaction(async (tx) => {
@@ -230,6 +237,12 @@ export const authService = {
       }
       await tx.user.update({ where: { id: user.id }, data: { passwordHash, sessionVersion: { increment: 1 } } })
       await tx.refreshToken.updateMany({ where: { userId: user.id, revoked: false }, data: { revoked: true } })
+      await recordAudit(tx, withActor(ctx, user), {
+        action: 'auth.password_reset',
+        entityType: 'user',
+        entityId: user.id,
+        changes: { sessionsRevoked: true },
+      })
       return { email: user.email }
     })
   },
@@ -238,7 +251,7 @@ export const authService = {
    * Ganti password oleh user yang sedang login. Semua refresh token lama dicabut;
    * route menerbitkan sesi baru agar perangkat saat ini tetap login.
    */
-  async changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
+  async changePassword(userId: string, input: ChangePasswordInput, ctx: AuditContext): Promise<void> {
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.status !== 'ACTIVE' || !user.passwordHash) {
       throw new AuthFlowError('User tidak ditemukan atau tidak aktif')
@@ -248,10 +261,16 @@ export const authService = {
     }
 
     const passwordHash = await bcrypt.hash(input.newPassword, BCRYPT_ROUNDS)
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: userId }, data: { passwordHash, sessionVersion: { increment: 1 } } }),
-      prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } }),
-      prisma.accountToken.deleteMany({ where: { userId, purpose: 'PASSWORD_RESET', usedAt: null } }),
-    ])
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { passwordHash, sessionVersion: { increment: 1 } } })
+      await tx.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } })
+      await tx.accountToken.deleteMany({ where: { userId, purpose: 'PASSWORD_RESET', usedAt: null } })
+      await recordAudit(tx, ctx, {
+        action: 'auth.password_changed',
+        entityType: 'user',
+        entityId: userId,
+        changes: { otherSessionsRevoked: true },
+      })
+    })
   },
 }

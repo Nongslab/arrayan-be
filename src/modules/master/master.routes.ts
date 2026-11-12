@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { authenticate, authorize } from '../../middlewares/auth.middleware.js'
 import { HttpError } from '../../lib/http-error.js'
+import { prisma } from '../../lib/prisma.js'
+import { auditContextFrom, diffForAudit, recordAudit } from '../../lib/audit.js'
 import {
   errorResponses,
   idParamsSchema as idParams,
@@ -52,6 +54,7 @@ function registerEntityRoutes(fastify: FastifyInstance, entity: MasterEntityConf
   const errors = errorResponses
 
   const delegate = () => entity.delegate()
+  const action = (verb: string) => `master.${entity.auditEntity}.${verb}`
   const serialize = (row: unknown) => entity.serialize(row as never)
   const toData = (input: AnyObject, mode: 'create' | 'update') => (entity.toData ? entity.toData(input, mode) : input)
 
@@ -162,7 +165,19 @@ function registerEntityRoutes(fastify: FastifyInstance, entity: MasterEntityConf
         if (ruleError) throw new HttpError(400, ruleError)
         await entity.beforeWrite?.({ input })
 
-        const row = await delegate().create({ data: toData(input, 'create'), include: entity.include })
+        const row = await prisma.$transaction(async (tx) => {
+          const created = (await entity.delegate(tx).create({
+            data: toData(input, 'create'),
+            include: entity.include,
+          })) as { id: string }
+          await recordAudit(tx, auditContextFrom(request), {
+            action: action('create'),
+            entityType: entity.auditEntity,
+            entityId: created.id,
+            changes: { after: serialize(created) },
+          })
+          return created
+        })
         return reply.status(201).send({ statusCode: 201, message: `${entity.label} berhasil dibuat`, data: serialize(row) })
       } catch (err) {
         return sendError(reply, err)
@@ -196,7 +211,20 @@ function registerEntityRoutes(fastify: FastifyInstance, entity: MasterEntityConf
         if (ruleError) throw new HttpError(400, ruleError)
         await entity.beforeWrite?.({ id, input: patch })
 
-        const row = await delegate().update({ where: { id }, data: toData(patch, 'update'), include: entity.include })
+        const row = await prisma.$transaction(async (tx) => {
+          const updated = await entity.delegate(tx).update({
+            where: { id },
+            data: toData(patch, 'update'),
+            include: entity.include,
+          })
+          await recordAudit(tx, auditContextFrom(request), {
+            action: action('update'),
+            entityType: entity.auditEntity,
+            entityId: id,
+            changes: diffForAudit(serialize(existing), serialize(updated)),
+          })
+          return updated
+        })
         return reply.send({ statusCode: 200, message: `${entity.label} berhasil diperbarui`, data: serialize(row) })
       } catch (err) {
         return sendError(reply, err)
@@ -221,9 +249,18 @@ function registerEntityRoutes(fastify: FastifyInstance, entity: MasterEntityConf
       try {
         const { id } = parse(idParams, request.params)
         const { isActive } = parse(activeBody, request.body)
-        await findOrThrow(id)
+        const existing = (await findOrThrow(id)) as { isActive: boolean }
 
-        const row = await delegate().update({ where: { id }, data: { isActive }, include: entity.include })
+        const row = await prisma.$transaction(async (tx) => {
+          const updated = await entity.delegate(tx).update({ where: { id }, data: { isActive }, include: entity.include })
+          await recordAudit(tx, auditContextFrom(request), {
+            action: action(isActive ? 'activate' : 'deactivate'),
+            entityType: entity.auditEntity,
+            entityId: id,
+            changes: { isActive: { from: existing.isActive, to: isActive } },
+          })
+          return updated
+        })
         return reply.send({
           statusCode: 200,
           message: `${entity.label} ${isActive ? 'diaktifkan' : 'dinonaktifkan'}`,

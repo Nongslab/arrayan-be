@@ -4,6 +4,7 @@ import { HttpError } from '../../lib/http-error.js'
 import { appConfig } from '../../lib/config.js'
 import { wouldCreateCycle } from '../../lib/hierarchy.js'
 import { getInvitationSender } from '../../lib/notifications/invitation-sender.js'
+import { diffForAudit, recordAudit, type AuditContext } from '../../lib/audit.js'
 import { issueAccountToken, revokeAccountTokens } from '../auth/account-token.service.js'
 import { employeeService } from './employee.service.js'
 import type {
@@ -111,6 +112,7 @@ async function assertManager(tx: Tx, employeeId: string | undefined, managerId: 
 /** Buat akun PENDING_ACTIVATION untuk karyawan + token aktivasi (di dalam transaksi). */
 async function createPendingAccount(
   tx: Tx,
+  ctx: AuditContext,
   employee: { id: string; fullName: string; jobTitleId: string },
   input: AccountInput,
 ): Promise<PendingInvitation> {
@@ -127,6 +129,12 @@ async function createPendingAccount(
   })
   await tx.employee.update({ where: { id: employee.id }, data: { userId: user.id } })
   const { token, expiresAt } = await issueAccountToken(tx, user.id, 'ACTIVATION')
+  await recordAudit(tx, ctx, {
+    action: 'employee.account.create',
+    entityType: 'employee',
+    entityId: employee.id,
+    changes: { userId: user.id, email: user.email, roleCode: role.code, status: 'PENDING_ACTIVATION' },
+  })
   return { email: user.email, fullName: employee.fullName, token, expiresAt }
 }
 
@@ -138,7 +146,7 @@ async function findEmployeeOrThrow(tx: Tx, id: string) {
 
 export const employeeAdminService = {
   /** US-2.2: buat data karyawan, opsional sekaligus akun + undangan. */
-  async create(input: CreateEmployeeInput) {
+  async create(input: CreateEmployeeInput, ctx: AuditContext) {
     const { account, joinDate, ...fields } = input
 
     const { employeeId, invitation } = await prisma.$transaction(async (tx) => {
@@ -148,7 +156,13 @@ export const employeeAdminService = {
       const employee = await tx.employee.create({
         data: { ...fields, joinDate: toDate(joinDate ?? todayDateOnly()) },
       })
-      const pending = account ? await createPendingAccount(tx, employee, account) : undefined
+      await recordAudit(tx, ctx, {
+        action: 'employee.create',
+        entityType: 'employee',
+        entityId: employee.id,
+        changes: { after: employee },
+      })
+      const pending = account ? await createPendingAccount(tx, ctx, employee, account) : undefined
       return { employeeId: employee.id, invitation: pending }
     })
 
@@ -158,33 +172,39 @@ export const employeeAdminService = {
     }
   },
 
-  async update(id: string, input: UpdateEmployeeInput) {
+  async update(id: string, input: UpdateEmployeeInput, ctx: AuditContext) {
     const { joinDate, ...fields } = input
     await prisma.$transaction(async (tx) => {
-      await findEmployeeOrThrow(tx, id)
+      const { user: _user, ...before } = await findEmployeeOrThrow(tx, id)
       await assertMasterReferences(tx, fields)
       await assertManager(tx, id, fields.managerId)
-      await tx.employee.update({
+      const after = await tx.employee.update({
         where: { id },
         data: { ...fields, ...(joinDate ? { joinDate: toDate(joinDate) } : {}) },
+      })
+      await recordAudit(tx, ctx, {
+        action: 'employee.update',
+        entityType: 'employee',
+        entityId: id,
+        changes: diffForAudit(before, after),
       })
     })
     return employeeService.getById(id)
   },
 
   /** Buat akun login untuk karyawan yang belum punya akun, lalu kirim undangan. */
-  async createAccount(id: string, input: AccountInput) {
+  async createAccount(id: string, input: AccountInput, ctx: AuditContext) {
     const invitation = await prisma.$transaction(async (tx) => {
       const employee = await findEmployeeOrThrow(tx, id)
       if (employee.status !== 'ACTIVE') throw new HttpError(422, 'Karyawan tidak aktif — aktifkan kembali terlebih dahulu')
       if (employee.userId) throw new HttpError(409, 'Karyawan sudah memiliki akun')
-      return createPendingAccount(tx, employee, input)
+      return createPendingAccount(tx, ctx, employee, input)
     })
     return { employee: await employeeService.getById(id), invitation: await deliverInvitation(invitation) }
   },
 
   /** Kirim ulang undangan; link sebelumnya otomatis hangus. */
-  async resendInvitation(id: string) {
+  async resendInvitation(id: string, ctx: AuditContext) {
     const invitation = await prisma.$transaction(async (tx) => {
       const employee = await findEmployeeOrThrow(tx, id)
       if (!employee.user) throw new HttpError(409, 'Karyawan belum memiliki akun')
@@ -193,6 +213,12 @@ export const employeeAdminService = {
         throw new HttpError(409, 'Akun tidak menunggu aktivasi (sudah aktif atau dinonaktifkan)')
       }
       const { token, expiresAt } = await issueAccountToken(tx, employee.user.id, 'ACTIVATION')
+      await recordAudit(tx, ctx, {
+        action: 'employee.account.invitation_resend',
+        entityType: 'employee',
+        entityId: id,
+        changes: { email: employee.user.email },
+      })
       return { email: employee.user.email, fullName: employee.fullName, token, expiresAt }
     })
     return { invitation: await deliverInvitation(invitation) }
@@ -203,7 +229,7 @@ export const employeeAdminService = {
    * - INACTIVE: akun → DISABLED, refresh token dicabut, token aktivasi/reset dihapus.
    * - ACTIVE: akun (bila ada) → PENDING_ACTIVATION tanpa password + undangan baru.
    */
-  async setStatus(id: string, input: EmployeeStatusInput, actorEmployeeId: string | undefined) {
+  async setStatus(id: string, input: EmployeeStatusInput, actorEmployeeId: string | undefined, ctx: AuditContext) {
     const invitation = await prisma.$transaction(async (tx) => {
       const employee = await findEmployeeOrThrow(tx, id)
       if (employee.status === input.status) {
@@ -218,6 +244,16 @@ export const employeeAdminService = {
         }
 
         await tx.employee.update({ where: { id }, data: { status: 'INACTIVE', exitDate } })
+        await recordAudit(tx, ctx, {
+          action: 'employee.deactivate',
+          entityType: 'employee',
+          entityId: id,
+          changes: {
+            status: { from: 'ACTIVE', to: 'INACTIVE' },
+            exitDate,
+            account: employee.user ? { from: employee.user.status, to: 'DISABLED' } : null,
+          },
+        })
         if (employee.user) {
           await tx.user.update({
             where: { id: employee.user.id },
@@ -230,6 +266,16 @@ export const employeeAdminService = {
       }
 
       await tx.employee.update({ where: { id }, data: { status: 'ACTIVE', exitDate: null } })
+      await recordAudit(tx, ctx, {
+        action: 'employee.reactivate',
+        entityType: 'employee',
+        entityId: id,
+        changes: {
+          status: { from: 'INACTIVE', to: 'ACTIVE' },
+          exitDate: { from: employee.exitDate, to: null },
+          account: employee.user ? { from: employee.user.status, to: 'PENDING_ACTIVATION' } : null,
+        },
+      })
       if (!employee.user) return undefined
 
       await tx.user.update({
