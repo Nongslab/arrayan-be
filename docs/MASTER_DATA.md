@@ -367,22 +367,44 @@ flowchart TD
 
 ---
 
-## 8. Kontrak & Aturan untuk API Berikutnya
+## 8. API Master Data & Aturan Validasi
 
-Aturan berikut **tidak** bisa dijamin oleh constraint database sehingga wajib divalidasi di layer API (Zod):
+### Endpoint
+
+Tersedia di `/api/master/<entitas>` untuk `departments`, `job-titles`, `office-locations`, `work-shifts`, `leave-types`, `holidays`, `training-categories`, `kpi-templates`. Kontrak lengkap + contoh body: Swagger `/docs` (tag `Master: …`).
+
+| Method & Path | Akses | Keterangan |
+| :--- | :--- | :--- |
+| `GET /api/master/<entitas>` | Semua user login | List aktif. Query: `q` (cari code/name), `page`, `limit` (≤ 200, default 100), `includeInactive=true` (hanya `SUPER_ADMIN`) + filter khusus entitas |
+| `GET /api/master/<entitas>/:id` | Semua user login | Detail (termasuk yang nonaktif) |
+| `POST /api/master/<entitas>` | `SUPER_ADMIN` | Buat data → `201` |
+| `PATCH /api/master/<entitas>/:id` | `SUPER_ADMIN` | Ubah sebagian field; `code` ditolak |
+| `PATCH /api/master/<entitas>/:id/active` | `SUPER_ADMIN` | Body `{ "isActive": false }` — soft deactivation. **Tidak ada DELETE** |
+
+Filter khusus: `departments?parentId=`, `job-titles?level=`, `leave-types?category=`, `holidays?year=&kind=`, `kpi-templates?jobTitleId=&departmentId=`.
+
+Format response: list `{ statusCode, data: [...], meta: { page, limit, total } }`; detail/tulis `{ statusCode, message?, data }`; error `{ statusCode, error, message, details?: [{ path, message }] }`. Angka desimal (`latitude`, `weight`, `target`) dikirim sebagai `number`; `Holiday.date` sebagai `yyyy-MM-dd`.
+
+Kode status: `400` validasi, `401` belum login, `403` bukan `SUPER_ADMIN`, `404` tidak ditemukan, `409` `code` duplikat, `422` referensi tidak valid / siklus departemen / induk nonaktif.
+
+Implementasi: [`src/modules/master/`](../src/modules/master/) — konfigurasi per entitas di `master.entities.ts`, route generik di `master.routes.ts`, aturan murni di `master.rules.ts`.
+
+### Aturan validasi
+
+Aturan berikut **tidak** bisa dijamin oleh constraint database sehingga divalidasi di layer API (Zod + `master.rules.ts`):
 
 | Entitas | Aturan |
 | :--- | :--- |
 | Semua | `code` cocok `^[A-Z0-9]+(_[A-Z0-9]+)*$`, unik (DB menjamin unik → map error Prisma `P2002` ke **409**) |
 | Semua | `code` tidak boleh diubah setelah dibuat; ubah `name` saja |
-| Semua | Penghapusan master yang masih dipakai → Prisma `P2003` → **409** + saran nonaktifkan |
-| Semua | Endpoint list untuk dropdown default `isActive = true`; admin bisa `?includeInactive=true` |
-| `Department` | Tidak boleh menjadi parent dirinya sendiri / membentuk siklus (cek ancestor via recursive CTE) |
-| `WorkShift` | `startTime`, `endTime` format `HH:mm`; `workDays` unik, nilai 1–7; jika `endTime ≤ startTime` maka `isOvernight` harus `true` |
+| Semua | Tidak ada endpoint hapus; gunakan `PATCH /:id/active`. Referensi FK yang tidak ada (Prisma `P2003`) → **422** |
+| Semua | Endpoint list untuk dropdown default `isActive = true`; `SUPER_ADMIN` bisa `?includeInactive=true` |
+| `Department` | Parent harus ada & aktif; tidak boleh menjadi parent dirinya sendiri / membentuk siklus (`wouldCreateDepartmentCycle`) → **422** |
+| `WorkShift` | `startTime`, `endTime` format `HH:mm` dan tidak sama; `workDays` unik, nilai 1–7 (disimpan terurut); `isOvernight = true` jika dan hanya jika `endTime < startTime` (dicek juga pada PATCH sebagian) |
 | `OfficeLocation` | `latitude` −90..90, `longitude` −180..180, `radiusMeters` > 0; BSSID format MAC `AA:BB:CC:DD:EE:FF` |
 | `LeaveType` | `defaultQuota` ≥ 0 |
 | `Holiday` | `date` format `yyyy-MM-dd`; satu tanggal boleh punya lebih dari satu entri dengan `code` berbeda |
-| `KpiTemplate` | Total `weight` indikator = 100; indikator `QUALITATIVE` tanpa `target`; `QUANTITATIVE` wajib `target` |
+| `KpiTemplate` | Total `weight` indikator = 100 (maks. 2 desimal); `QUALITATIVE` tanpa `target`; `QUANTITATIVE` wajib `target`; PATCH `indicators` mengganti seluruh daftar |
 | Hak akses | Create/update/deactivate: `SUPER_ADMIN` (HR GA). Read (list aktif): semua user terautentikasi |
 
 ### Kontrak yang sudah berlaku — session payload auth

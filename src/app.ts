@@ -6,6 +6,7 @@ import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import { prisma } from './lib/prisma.js'
 import { authRoutes } from './modules/auth/auth.routes.js'
+import { masterRoutes, MASTER_SWAGGER_TAGS } from './modules/master/master.routes.js'
 
 /** Secret wajib diisi via environment — tidak ada nilai fallback yang bisa bocor ke production. */
 function requireEnv(name: string): string {
@@ -71,7 +72,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           },
         },
       },
-      tags: [{ name: 'Auth', description: 'Otentikasi, Sesi, dan Keamanan Pengguna' }],
+      tags: [{ name: 'Auth', description: 'Otentikasi, Sesi, dan Keamanan Pengguna' }, ...MASTER_SWAGGER_TAGS],
     },
   })
 
@@ -106,6 +107,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   // 6. Feature Modules
   await fastify.register(authRoutes, { prefix: '/api/auth' })
+  await fastify.register(masterRoutes, { prefix: '/api/master' })
 
   return fastify
 }

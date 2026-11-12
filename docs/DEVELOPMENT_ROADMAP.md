@@ -9,7 +9,7 @@ Dokumen ini adalah panduan kerja bertahap (*Step-by-Step Execution Plan*) yang d
 | Modul PRD v2.0 | Status Frontend | Status Backend (`arrayan-be`) | Rencana Aksi |
 | :--- | :--- | :--- | :--- |
 | **Auth & Security** | Form Login prototipe | ✅ Selesai (JWT HttpOnly + Bearer + Refresh Token Rotation + Swagger Docs) | Selesai (PR #5 merged ke `main`) |
-| **Master Data (Departemen, Jabatan, Kantor, Shift, Cuti, Libur, Training, KPI Template)** | Dropdown masih hardcode | ✅ Schema, migrasi & seed selesai (PR #11). API CRUD belum | Fase 2A: API master data (`/api/master/*`) |
+| **Master Data (Departemen, Jabatan, Kantor, Shift, Cuti, Libur, Training, KPI Template)** | Dropdown masih hardcode | ✅ Schema, migrasi, seed (PR #11) & API CRUD `/api/master/*` selesai | Integrasi dropdown FE ke `/api/master/*` |
 | **Module 1: Employee & Tree Branch** | Mock CRUD Karyawan | Tabel `employees` (FK ke master data), self-referencing `managerId`, status Probation/Kartap/PKL | Implementasi CRUD Admin & Tree Branch API (Issue #4) |
 | **Module 2: Real-Time Attendance & Geofencing (New)** | Mock Clock-in/out | ⚠️ Belum ada | 1. Webhook/Middleware mesin Fingerprint fisik<br>2. Geofencing radius kantor & Wi-Fi Location Lock validator |
 | **Module 3: Centralized Dashboard Widgets (New - 5-in-1)** | Dashboard dasar belum 5-in-1 | ⚠️ Belum ada | Endpoint agregasi real-time:<br>1. *Yang Telat Hari Ini*<br>2. *Yang Cuti Hari Ini*<br>3. *Yang Sakit Hari Ini*<br>4. *Birthday Hari Ini*<br>5. *Jadwal Training* |
@@ -31,13 +31,13 @@ Dokumen ini adalah panduan kerja bertahap (*Step-by-Step Execution Plan*) yang d
 - [x] Unit Tests (Vitest) lulus 100% (auth, login limiter, middleware, seed master data).
 - [x] GitHub Actions CI Quality Gate & Branch Protection di `main`.
 
-### Fase 2A: Master Data API (✅ schema/seed selesai — API dikerjakan lebih dulu)
+### Fase 2A: Master Data API (✅ SELESAI)
 Schema, migrasi (dengan backfill) dan seed master data sudah merged (PR #11). Referensi: [`MASTER_DATA.md`](MASTER_DATA.md).
 - [x] Tabel master: `departments` (berjenjang), `job_titles` (+ `level`), `office_locations`, `work_shifts`, `leave_types`, `holidays`, `training_categories`, `kpi_templates` + `kpi_indicators`.
 - [x] `employees` memakai FK `jobTitleId` (wajib), `departmentId`, `officeLocationId`, `workShiftId` (`onDelete: Restrict`).
-- [ ] `GET/POST/PATCH /api/master/<entitas>` + `PATCH /:id/active` (soft deactivate, tanpa DELETE). Baca: semua role terautentikasi; tulis: `SUPER_ADMIN`.
-- [ ] Validasi bisnis (MASTER_DATA.md §8): `code` UPPER_SNAKE immutable, siklus parent departemen, format `HH:mm`, total bobot KPI = 100.
-- [ ] Test integrasi dengan Postgres (service di CI) + Swagger tag `Master Data`.
+- [x] `GET/POST/PATCH /api/master/<entitas>` + `PATCH /:id/active` (soft deactivate, tanpa DELETE). Baca: semua role terautentikasi; tulis: `SUPER_ADMIN`.
+- [x] Validasi bisnis (MASTER_DATA.md §8): `code` UPPER_SNAKE immutable, siklus parent departemen, format `HH:mm`, total bobot KPI = 100.
+- [x] Test integrasi dengan Postgres (service di CI) + Swagger tag `Master: <entitas>`.
 
 ### Fase 2: Master Data Karyawan, Tree Branch & Email Invitation (Issue #4 — FOKUS TAHAP INI)
 

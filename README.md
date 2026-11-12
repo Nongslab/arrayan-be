@@ -36,10 +36,11 @@ arrayan-backend/
 │   ├── seed.ts              # Seeder roles & initial Super Admin
 │   └── migrations/          # Prisma database migrations history
 ├── src/
-│   ├── lib/prisma.ts        # Singleton Prisma Client
+│   ├── lib/                 # Prisma Client singleton & HttpError / mapping error Prisma
 │   ├── middlewares/         # authenticate (Bearer/cookie) & authorize (RBAC)
 │   ├── modules/
-│   │   └── auth/            # Routes, service, Zod schema, login limiter, & tests
+│   │   ├── auth/            # Routes, service, Zod schema, login limiter, & tests
+│   │   └── master/          # API master data /api/master/* (route generik + aturan validasi)
 │   ├── test/                # Global setup & helper integration test
 │   ├── app.ts               # buildApp(): plugin CORS/cookie/JWT/Swagger + routes (tanpa listen)
 │   └── server.ts            # Entrypoint: buildApp() + listen
@@ -98,6 +99,8 @@ departemen berjenjang (`HQ` → `ENG`, `HRD`, `FIN`, `OPS`), jabatan + level hie
 shift `REGULAR` 08:00–17:00, jenis cuti, hari libur 2026/2027, kategori training, dan contoh template KPI.
 
 > ⚠️ Koordinat & Wi-Fi lokasi kantor `HO` masih **placeholder** — ganti dengan data riil klien sebelum go-live.
+
+Master data dikelola lewat API `/api/master/<entitas>` (baca: semua user login; tulis & nonaktifkan: `SUPER_ADMIN`).
 
 📘 Detail struktur, ERD, flowchart, dan aturan master data: [`docs/MASTER_DATA.md`](docs/MASTER_DATA.md).
 
