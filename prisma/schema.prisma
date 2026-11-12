@@ -125,6 +125,7 @@ model Employee {
   subordinates            Employee[]               @relation("EmployeeHierarchy")
   leaveRequests           LeaveRequest[]
   attendanceLogs          AttendanceLog[]
+  trainingParticipations  TrainingParticipant[]
   leaveBalanceAdjustments LeaveBalanceAdjustment[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -297,13 +298,14 @@ model Holiday {
 
 /// Kategori pelatihan (Modul 6).
 model TrainingCategory {
-  id          String   @id @default(uuid())
-  code        String   @unique
+  id          String     @id @default(uuid())
+  code        String     @unique
   name        String
   description String?
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  trainings   Training[]
+  isActive    Boolean    @default(true) @map("is_active")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
 
   @@map("training_categories")
 }
@@ -472,4 +474,54 @@ model AttendanceLog {
   @@index([employeeId, occurredAt])
   @@index([occurredAt])
   @@map("attendance_logs")
+}
+
+// =============================================================
+// 8. TRAINING (PRD Module 5 & 6)
+// =============================================================
+enum TrainingStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+model Training {
+  id           String                @id @default(uuid())
+  title        String
+  description  String?
+  categoryId   String                @map("category_id")
+  category     TrainingCategory      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  /// Penyelenggara (internal / vendor eksternal)
+  organizer    String?
+  location     String?
+  startAt      DateTime              @map("start_at") @db.Timestamptz(3)
+  endAt        DateTime              @map("end_at") @db.Timestamptz(3)
+  status       TrainingStatus        @default(SCHEDULED)
+  participants TrainingParticipant[]
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  @@index([startAt])
+  @@index([categoryId])
+  @@map("trainings")
+}
+
+/// Peserta training + remarks/feedback (diisi peserta setelah training selesai).
+model TrainingParticipant {
+  id         String    @id @default(uuid())
+  trainingId String    @map("training_id")
+  training   Training  @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  employeeId String    @map("employee_id")
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  /// Ditandai HR; null = belum dicatat
+  attended   Boolean?
+  remarks    String?
+  /// Penilaian peserta 1–5
+  rating     Int?
+  remarkedAt DateTime? @map("remarked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@unique([trainingId, employeeId])
+  @@index([employeeId])
+  @@map("training_participants")
 }
