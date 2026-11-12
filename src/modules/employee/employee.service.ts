@@ -74,7 +74,7 @@ export function serializeEmployee(row: EmployeeRow, includePersonal = true) {
 }
 
 /** Seluruh id turunan sebuah departemen (termasuk dirinya). Data master kecil → cukup dimuat sekali. */
-async function departmentWithDescendants(departmentId: string): Promise<string[]> {
+export async function departmentWithDescendants(departmentId: string): Promise<string[]> {
   const all = await prisma.department.findMany({ select: { id: true, parentId: true } })
   const childrenOf = new Map<string, string[]>()
   for (const d of all) {
