@@ -8,7 +8,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/**/*.int.test.ts'],
+    include: ['src/**/*.int.test.ts', 'prisma/**/*.int.test.ts'],
     globalSetup: ['src/test/global-setup.ts'],
     fileParallelism: false,
     testTimeout: 20_000,

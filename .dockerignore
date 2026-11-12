@@ -22,3 +22,6 @@ docker-compose*.yml
 deploy
 scripts
 .DS_Store
+
+# Data demo dev-only — tidak ikut ke image
+prisma/demo
