@@ -7,6 +7,7 @@ import { getInvitationSender } from '../../lib/notifications/invitation-sender.j
 import { diffForAudit, recordAudit, type AuditContext } from '../../lib/audit.js'
 import { issueAccountToken, revokeAccountTokens } from '../auth/account-token.service.js'
 import { employeeService } from './employee.service.js'
+import { resolveProbationEnd } from './employee.probation.js'
 import type {
   AccountInput,
   CreateEmployeeInput,
@@ -160,17 +161,23 @@ function assertBirthBeforeJoin(birthDate: Date | null | undefined, joinDate: Dat
 export const employeeAdminService = {
   /** US-2.2: buat data karyawan, opsional sekaligus akun + undangan. */
   async create(input: CreateEmployeeInput, ctx: AuditContext) {
-    const { account, joinDate, birthDate, ...fields } = input
+    const { account, joinDate, birthDate, probationEndDate, ...fields } = input
     const join = toDate(joinDate ?? todayDateOnly())
     const birth = birthDateData(birthDate)
     assertBirthBeforeJoin(birth.birthDate, join)
+    const probation = resolveProbationEnd({
+      employmentType: fields.employmentType ?? 'PROBATION',
+      joinDate: join,
+      requested: probationEndDate === undefined ? undefined : probationEndDate === null ? null : toDate(probationEndDate),
+    })
+    if (!probation.ok) throw new HttpError(400, probation.message)
 
     const { employeeId, invitation } = await prisma.$transaction(async (tx) => {
       await assertMasterReferences(tx, fields)
       await assertManager(tx, undefined, fields.managerId)
 
       const employee = await tx.employee.create({
-        data: { ...fields, ...birth, joinDate: join },
+        data: { ...fields, ...birth, joinDate: join, probationEndDate: probation.value ?? null },
       })
       await recordAudit(tx, ctx, {
         action: 'employee.create',
@@ -189,19 +196,29 @@ export const employeeAdminService = {
   },
 
   async update(id: string, input: UpdateEmployeeInput, ctx: AuditContext) {
-    const { joinDate, birthDate, ...fields } = input
+    const { joinDate, birthDate, probationEndDate, ...fields } = input
     await prisma.$transaction(async (tx) => {
       const { user: _user, ...before } = await findEmployeeOrThrow(tx, id)
+      const join = joinDate ? toDate(joinDate) : before.joinDate
       const birth = birthDateData(birthDate)
-      assertBirthBeforeJoin(
-        'birthDate' in birth ? birth.birthDate : before.birthDate,
-        joinDate ? toDate(joinDate) : before.joinDate,
-      )
+      assertBirthBeforeJoin('birthDate' in birth ? birth.birthDate : before.birthDate, join)
+      const probation = resolveProbationEnd({
+        employmentType: fields.employmentType ?? before.employmentType,
+        joinDate: join,
+        requested: probationEndDate === undefined ? undefined : probationEndDate === null ? null : toDate(probationEndDate),
+        before: { joinDate: before.joinDate, probationEndDate: before.probationEndDate },
+      })
+      if (!probation.ok) throw new HttpError(400, probation.message)
       await assertMasterReferences(tx, fields)
       await assertManager(tx, id, fields.managerId)
       const after = await tx.employee.update({
         where: { id },
-        data: { ...fields, ...birth, ...(joinDate ? { joinDate: toDate(joinDate) } : {}) },
+        data: {
+          ...fields,
+          ...birth,
+          ...(joinDate ? { joinDate: join } : {}),
+          ...(probation.value !== undefined ? { probationEndDate: probation.value } : {}),
+        },
       })
       await recordAudit(tx, ctx, {
         action: 'employee.update',

@@ -89,16 +89,18 @@ model RefreshToken {
 // 3. Employee Profile & Hierarchy (Tree Branch)
 // -------------------------------------------------------------
 model Employee {
-  id             String         @id @default(uuid())
-  userId         String?        @unique @map("user_id")
-  user           User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  nik            String         @unique
-  fullName       String         @map("full_name")
-  employmentType EmploymentType @default(PROBATION) @map("employment_type")
-  joinDate       DateTime       @default(now()) @map("join_date")
+  id               String         @id @default(uuid())
+  userId           String?        @unique @map("user_id")
+  user             User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  nik              String         @unique
+  fullName         String         @map("full_name")
+  employmentType   EmploymentType @default(PROBATION) @map("employment_type")
+  joinDate         DateTime       @default(now()) @map("join_date")
+  /// Akhir masa probation (default joinDate + 6 bulan, PRD Module 1). Null bila bukan PROBATION sejak awal.
+  probationEndDate DateTime?      @map("probation_end_date") @db.Date
   /// INACTIVE = karyawan keluar. Data tidak dihapus agar bisa diaktifkan kembali.
-  status         EmployeeStatus @default(ACTIVE)
-  exitDate       DateTime?      @map("exit_date") @db.Date
+  status           EmployeeStatus @default(ACTIVE)
+  exitDate         DateTime?      @map("exit_date") @db.Date
 
   // Data pribadi (US-2.7) — hanya terlihat oleh SUPER_ADMIN & karyawan ybs.
   birthDate     DateTime? @map("birth_date") @db.Date

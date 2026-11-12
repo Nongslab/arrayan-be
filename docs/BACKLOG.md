@@ -35,7 +35,7 @@ flowchart LR
 | Urutan | Story | Siap |
 | :--- | :--- | :---: |
 | 1 | US-2.7 Data pribadi karyawan (birthDate, kontak) | ✅ |
-| 2 | US-2.9 Pelacakan masa probation | 🟢 |
+| 2 | US-2.9 Pelacakan masa probation | ✅ |
 | 3 | US-5.1 Saldo cuti tahunan | 🟡 Q-5 |
 | 4 | US-5.2 Pengajuan cuti / izin / sakit (tanpa lampiran dulu) | 🟢 |
 | 5 | US-5.4 Pembatalan pengajuan | 🟢 |
@@ -72,7 +72,7 @@ flowchart LR
 - Unduh hanya oleh SUPER_ADMIN dan pemilik dokumen; setiap unduhan tercatat di audit log.
 - Fondasi ini dipakai ulang oleh lampiran sakit (US-5.2) dan struk reimbursement (US-5.5).
 
-### US-2.9 Pelacakan masa probation 🟢
+### US-2.9 Pelacakan masa probation ✅ selesai
 **Sebagai** HR, **saya ingin** tahu siapa yang masa probation-nya segera berakhir, **agar** evaluasi pengangkatan tidak terlewat.
 - `probationEndDate` dihitung `joinDate + 6 bulan` (PRD Module 1), dapat diubah HR.
 - `GET /api/employees?probationEndingWithinDays=30`.
