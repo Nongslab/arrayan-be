@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
+import type { AuditDb } from '../../lib/audit.js'
 import { HttpError } from '../../lib/http-error.js'
 import {
   BSSID_PATTERN,
@@ -35,7 +36,10 @@ export interface MasterEntityConfig {
   path: string
   /** Nama tampil (Swagger tag & pesan). */
   label: string
-  delegate: () => MasterDelegate
+  /** Nama entitas untuk audit log, mis. "department" → aksi "master.department.update". */
+  auditEntity: string
+  /** Delegate Prisma; terima klien transaksi agar audit ditulis atomik bersama aksinya. */
+  delegate: (db?: AuditDb) => MasterDelegate
   /** Field input (tanpa isActive). `code` wajib ada; dibuang otomatis pada update. */
   fields: z.ZodRawShape
   /** Bentuk response satu item (dokumentasi Swagger + serializer). */
@@ -118,7 +122,8 @@ type DepartmentRow = BaseRow & {
 const department: MasterEntityConfig = {
   path: 'departments',
   label: 'Departemen',
-  delegate: () => prisma.department as unknown as MasterDelegate,
+  auditEntity: 'department',
+  delegate: (db = prisma) => db.department as unknown as MasterDelegate,
   fields: {
     code: codeField,
     name: nameField,
@@ -170,7 +175,8 @@ type JobTitleRow = BaseRow & { level: string; description: string | null }
 const jobTitle: MasterEntityConfig = {
   path: 'job-titles',
   label: 'Jabatan',
-  delegate: () => prisma.jobTitle as unknown as MasterDelegate,
+  auditEntity: 'job_title',
+  delegate: (db = prisma) => db.jobTitle as unknown as MasterDelegate,
   fields: {
     code: codeField,
     name: nameField,
@@ -202,7 +208,8 @@ type OfficeLocationRow = BaseRow & {
 const officeLocation: MasterEntityConfig = {
   path: 'office-locations',
   label: 'Lokasi Kantor',
-  delegate: () => prisma.officeLocation as unknown as MasterDelegate,
+  auditEntity: 'office_location',
+  delegate: (db = prisma) => db.officeLocation as unknown as MasterDelegate,
   fields: {
     code: codeField,
     name: nameField,
@@ -269,7 +276,8 @@ const timeField = z.string().regex(TIME_PATTERN, 'format HH:mm (00:00–23:59)')
 const workShift: MasterEntityConfig = {
   path: 'work-shifts',
   label: 'Shift Kerja',
-  delegate: () => prisma.workShift as unknown as MasterDelegate,
+  auditEntity: 'work_shift',
+  delegate: (db = prisma) => db.workShift as unknown as MasterDelegate,
   fields: {
     code: codeField,
     name: nameField,
@@ -341,7 +349,8 @@ type LeaveTypeRow = BaseRow & {
 const leaveType: MasterEntityConfig = {
   path: 'leave-types',
   label: 'Jenis Cuti',
-  delegate: () => prisma.leaveType as unknown as MasterDelegate,
+  auditEntity: 'leave_type',
+  delegate: (db = prisma) => db.leaveType as unknown as MasterDelegate,
   fields: {
     code: codeField,
     name: nameField,
@@ -392,7 +401,8 @@ type HolidayRow = BaseRow & { date: Date; kind: string }
 const holiday: MasterEntityConfig = {
   path: 'holidays',
   label: 'Hari Libur',
-  delegate: () => prisma.holiday as unknown as MasterDelegate,
+  auditEntity: 'holiday',
+  delegate: (db = prisma) => db.holiday as unknown as MasterDelegate,
   fields: {
     code: codeField,
     name: nameField,
@@ -432,7 +442,8 @@ type TrainingCategoryRow = BaseRow & { description: string | null }
 const trainingCategory: MasterEntityConfig = {
   path: 'training-categories',
   label: 'Kategori Training',
-  delegate: () => prisma.trainingCategory as unknown as MasterDelegate,
+  auditEntity: 'training_category',
+  delegate: (db = prisma) => db.trainingCategory as unknown as MasterDelegate,
   fields: { code: codeField, name: nameField, description: optionalText },
   response: z.object({ ...baseResponse, description: z.string().nullable() }),
   serialize: (row: TrainingCategoryRow) => ({ ...serializeBase(row), description: row.description }),
@@ -486,7 +497,8 @@ const toIndicatorCreate = (indicators: KpiIndicatorInput[]) =>
 const kpiTemplate: MasterEntityConfig = {
   path: 'kpi-templates',
   label: 'Template KPI',
-  delegate: () => prisma.kpiTemplate as unknown as MasterDelegate,
+  auditEntity: 'kpi_template',
+  delegate: (db = prisma) => db.kpiTemplate as unknown as MasterDelegate,
   fields: {
     code: codeField,
     name: nameField,

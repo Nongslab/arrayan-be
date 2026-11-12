@@ -36,6 +36,7 @@ model User {
   employee       Employee?
   refreshTokens  RefreshToken[]
   accountTokens  AccountToken[]
+  auditLogs      AuditLog[]
   status         UserStatus     @default(ACTIVE)
   /// Naik setiap akun dinonaktifkan / password diganti / di-reset → semua access token lama tidak berlaku.
   sessionVersion Int            @default(0) @map("session_version")
@@ -338,4 +339,35 @@ model KpiIndicator {
 
   @@index([templateId])
   @@map("kpi_indicators")
+}
+
+// =============================================================
+// 5. AUDIT LOG
+// Jejak aksi admin & keamanan. Ditulis dalam transaksi yang sama dengan aksinya.
+// Tidak pernah memuat password / token / hash.
+// =============================================================
+model AuditLog {
+  id          String   @id @default(uuid())
+  /// Nomor urut monoton — pengurut stabil untuk entri dalam transaksi yang sama (created_at bisa identik)
+  seq         Int      @unique @default(autoincrement())
+  /// Pelaku (null untuk aksi sistem / publik, mis. login terkunci)
+  actorUserId String?  @map("actor_user_id")
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  /// Snapshot email pelaku saat aksi terjadi
+  actorEmail  String?  @map("actor_email")
+  /// Kode aksi, mis. "employee.create", "master.department.update", "auth.password_reset"
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  /// Detail perubahan: { after } untuk create, { field: { from, to } } untuk update, atau info aksi
+  changes     Json?
+  ip          String?
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([actorUserId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
 }

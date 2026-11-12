@@ -13,6 +13,8 @@ import { authenticate } from '../../middlewares/auth.middleware.js'
 import { createLoginLimiter, loginLimiter } from './login-limiter.js'
 import type { FastifyReply } from 'fastify'
 import { appConfig } from '../../lib/config.js'
+import { prisma } from '../../lib/prisma.js'
+import { auditContextFrom, recordAudit } from '../../lib/audit.js'
 
 const ACCESS_TOKEN_EXPIRY = '15m'
 const ACCESS_TOKEN_MAX_AGE = 15 * 60 // 15 menit
@@ -197,6 +199,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         sessionPayload = await authService.validateUser(parseResult.data)
       } catch (err: unknown) {
         loginLimiter.recordFailure(request.ip, email)
+        // Catat ke audit log tepat saat percobaan ini membuat IP + email terkunci.
+        if (loginLimiter.retryAfterSeconds(request.ip, email) > 0) {
+          await recordAudit(prisma, auditContextFrom(request), {
+            action: 'auth.login_locked',
+            entityType: 'user',
+            changes: { email: email.trim().toLowerCase() },
+          })
+        }
         const error = err as Error
         return reply.status(401).send({
           statusCode: 401,
@@ -400,7 +410,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       try {
-        const { email } = await authService.activateAccount(parseResult.data)
+        const { email } = await authService.activateAccount(parseResult.data, auditContextFrom(request))
         return reply.send({ statusCode: 200, message: 'Akun berhasil diaktivasi. Silakan login.', email })
       } catch (err: unknown) {
         if (!isSafeAuthError(err)) throw err
@@ -487,7 +497,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       try {
-        const { email } = await authService.resetPassword(parseResult.data)
+        const { email } = await authService.resetPassword(parseResult.data, auditContextFrom(request))
         clearAuthCookies(reply)
         return reply.send({ statusCode: 200, message: 'Password berhasil diubah. Silakan login kembali.', email })
       } catch (err: unknown) {
@@ -542,7 +552,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       try {
-        await authService.changePassword(userId, parseResult.data)
+        await authService.changePassword(userId, parseResult.data, auditContextFrom(request))
       } catch (err: unknown) {
         if (!isSafeAuthError(err)) throw err
         changePasswordLimiter.recordFailure(request.ip, userId)

@@ -121,6 +121,12 @@ Sebuah task/fitur di Fase 2 dinyatakan **SELESAI (DONE)** jika memenuhi seluruh 
   - GitHub Actions CI Quality Gate di branch berstatus hijau (passed).
   - Pull Request (PR) dibuka ke `main` dan diverifikasi/dimerge secara eksklusif oleh akun authorized (`rakai77`).
 
+### Fondasi Teknis (✅ SELESAI — disiapkan sebelum kontrak klien)
+- [x] Validasi sesi per request (`sessionVersion`): akun nonaktif / ganti / reset password langsung memutus access token lama.
+- [x] Config env terpusat & tervalidasi (aturan khusus production), redaksi log, error 5xx generik, graceful shutdown.
+- [x] Audit log aksi admin & event keamanan (`GET /api/audit-logs`, SUPER_ADMIN). Keputusan: login sukses tidak dicatat (cukup `lastLoginAt`), retensi tanpa batas sampai ada kebijakan klien.
+- [ ] Dockerfile + `docker-compose.prod.yml` untuk deploy VPS.
+
 ### Fase 3: Real-Time Attendance & Integrasi Hardware (PRD v2.0 Update)
 - [ ] **Mesin Fingerprint Webhook/Receiver**:
   - Endpoint `POST /api/attendance/fingerprint-sync` untuk menerima push log otomatis dari mesin fingerprint fisik kantor.

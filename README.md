@@ -40,6 +40,7 @@ arrayan-backend/
 │   ├── middlewares/         # authenticate (Bearer/cookie) & authorize (RBAC)
 │   ├── modules/
 │   │   ├── auth/            # Routes, service, Zod schema, login limiter, & tests
+│   │   ├── audit/           # API audit log /api/audit-logs
 │   │   ├── employee/        # API karyawan /api/employees (list, detail, tree branch)
 │   │   └── master/          # API master data /api/master/* (route generik + aturan validasi)
 │   ├── test/                # Global setup & helper integration test
@@ -132,6 +133,7 @@ Fitur autentikasi Swagger:
 
 Ringkasan sesi auth:
 * **Access token** JWT 15 menit — dikirim via header `Authorization: Bearer <token>` atau cookie HttpOnly `arrayan_access_token`.
+* **Audit log** — aksi admin (karyawan, akun, master data) dan event keamanan (aktivasi, reset/ganti password, login terkunci) dicatat di tabel `audit_logs` dalam transaksi yang sama dengan aksinya, tanpa password/token. Baca via `GET /api/audit-logs` (khusus `SUPER_ADMIN`; filter `action` (awalan), `actorUserId`, `entityType`, `entityId`, `from`, `to`).
 * **Validasi sesi per request** — setiap request terautentikasi dicocokkan ke DB (status `ACTIVE` + `sessionVersion`). Menonaktifkan akun, ganti password, atau reset password langsung membatalkan semua access token lama (401 *"Sesi tidak berlaku lagi"*); perubahan role berlaku seketika.
 * **Refresh token** opaque 7 hari — body `refreshToken` atau cookie `arrayan_refresh_token` (path `/api/auth`), disimpan sebagai hash SHA-256 dan dirotasi setiap `POST /api/auth/refresh`.
 * **Login limiter** — 5 percobaan gagal per IP + email dalam 15 menit → HTTP `429` dengan header `Retry-After`.

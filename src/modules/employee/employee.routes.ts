@@ -23,6 +23,7 @@ import {
 } from './employee.schema.js'
 import { employeeService } from './employee.service.js'
 import { employeeAdminService } from './employee.admin.service.js'
+import { auditContextFrom } from '../../lib/audit.js'
 
 const TAG = 'Employees'
 const ADMIN_ONLY = [authenticate, authorize(['SUPER_ADMIN'])]
@@ -194,7 +195,7 @@ export const employeeRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       try {
         const input = parse(createEmployeeSchema, request.body)
-        const { employee, invitation } = await employeeAdminService.create(input)
+        const { employee, invitation } = await employeeAdminService.create(input, auditContextFrom(request))
         return reply.status(201).send({
           statusCode: 201,
           message: invitation ? 'Karyawan dibuat dan undangan aktivasi dikirim' : 'Karyawan dibuat',
@@ -222,7 +223,7 @@ export const employeeRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const { id } = parse(idParamsSchema, request.params)
         const input = parse(updateEmployeeSchema, request.body)
-        const data = await employeeAdminService.update(id, input)
+        const data = await employeeAdminService.update(id, input, auditContextFrom(request))
         return reply.send({ statusCode: 200, message: 'Data karyawan diperbarui', data })
       } catch (err) {
         return sendError(reply, err)
@@ -245,7 +246,7 @@ export const employeeRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const { id } = parse(idParamsSchema, request.params)
         const input = parse(accountInputSchema, request.body)
-        const { employee, invitation } = await employeeAdminService.createAccount(id, input)
+        const { employee, invitation } = await employeeAdminService.createAccount(id, input, auditContextFrom(request))
         return reply
           .status(201)
           .send({ statusCode: 201, message: 'Akun dibuat dan undangan aktivasi dikirim', data: employee, invitation })
@@ -274,7 +275,7 @@ export const employeeRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       try {
         const { id } = parse(idParamsSchema, request.params)
-        const { invitation } = await employeeAdminService.resendInvitation(id)
+        const { invitation } = await employeeAdminService.resendInvitation(id, auditContextFrom(request))
         return reply.send({ statusCode: 200, message: 'Undangan aktivasi dikirim ulang', invitation })
       } catch (err) {
         return sendError(reply, err)
@@ -303,6 +304,7 @@ export const employeeRoutes: FastifyPluginAsync = async (fastify) => {
           id,
           input,
           request.userSession?.employee?.id,
+          auditContextFrom(request),
         )
         return reply.send({
           statusCode: 200,
