@@ -34,7 +34,7 @@ flowchart LR
 
 | Urutan | Story | Siap |
 | :--- | :--- | :---: |
-| 1 | US-2.7 Data pribadi karyawan (birthDate, kontak) | 🟢 |
+| 1 | US-2.7 Data pribadi karyawan (birthDate, kontak) | ✅ |
 | 2 | US-2.9 Pelacakan masa probation | 🟢 |
 | 3 | US-5.1 Saldo cuti tahunan | 🟡 Q-5 |
 | 4 | US-5.2 Pengajuan cuti / izin / sakit (tanpa lampiran dulu) | 🟢 |
@@ -57,7 +57,7 @@ flowchart LR
 
 ## Fase 2B — Melengkapi Data Karyawan (gap PRD Module 1)
 
-### US-2.7 Data pribadi karyawan 🟢
+### US-2.7 Data pribadi karyawan ✅ selesai
 **Sebagai** HR, **saya ingin** menyimpan data pribadi karyawan, **agar** widget ulang tahun dan kalender berfungsi serta profil lengkap.
 - Field baru di `Employee`: `birthDate` (date), `gender`, `phone`, `personalEmail`, `address` — semua opsional; konfirmasi daftar akhir dengan klien.
 - `POST/PATCH /api/employees` menerima field tersebut; perubahan masuk audit log (diff).

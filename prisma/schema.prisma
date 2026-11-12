@@ -100,6 +100,13 @@ model Employee {
   status         EmployeeStatus @default(ACTIVE)
   exitDate       DateTime?      @map("exit_date") @db.Date
 
+  // Data pribadi (US-2.7) — hanya terlihat oleh SUPER_ADMIN & karyawan ybs.
+  birthDate     DateTime? @map("birth_date") @db.Date
+  gender        Gender?
+  phone         String?
+  personalEmail String?   @map("personal_email")
+  address       String?
+
   // Relasi ke Master Data (AGENTS.md §1 — tidak ada free-text untuk entitas inti)
   jobTitleId       String          @map("job_title_id")
   jobTitle         JobTitle        @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
@@ -135,6 +142,11 @@ enum EmploymentType {
 enum EmployeeStatus {
   ACTIVE
   INACTIVE
+}
+
+enum Gender {
+  MALE
+  FEMALE
 }
 
 // =============================================================

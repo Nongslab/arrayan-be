@@ -3,6 +3,18 @@ import { prisma } from '../../lib/prisma.js'
 import { HttpError } from '../../lib/http-error.js'
 import { buildEmployeeTree, HIERARCHY_RANK, type TreeNode } from './employee.tree.js'
 import type { EmployeeListQuery } from './employee.schema.js'
+import { birthdaysInRange } from './employee.birthdays.js'
+
+/** Siapa yang meminta data — menentukan visibilitas data pribadi. */
+export interface EmployeeViewer {
+  isAdmin: boolean
+  employeeId: string | null
+}
+
+/** Data pribadi hanya untuk SUPER_ADMIN dan karyawan itu sendiri. Tanpa viewer = konteks internal/admin. */
+function canSeePersonal(viewer: EmployeeViewer | undefined, employeeId: string): boolean {
+  return !viewer || viewer.isAdmin || viewer.employeeId === employeeId
+}
 
 const jobTitleSelect = { select: { id: true, code: true, name: true, level: true } } as const
 const refSelect = { select: { id: true, code: true, name: true } } as const
@@ -27,7 +39,7 @@ function accountStatusOf(user: EmployeeRow['user']): AccountStatus {
 }
 
 /** Bentuk publik karyawan. Tidak pernah memuat passwordHash / token (AGENTS.md §3). */
-export function serializeEmployee(row: EmployeeRow) {
+export function serializeEmployee(row: EmployeeRow, includePersonal = true) {
   return {
     id: row.id,
     nik: row.nik,
@@ -47,6 +59,15 @@ export function serializeEmployee(row: EmployeeRow) {
       : null,
     accountStatus: accountStatusOf(row.user),
     subordinateCount: row._count.subordinates,
+    personal: includePersonal
+      ? {
+          birthDate: row.birthDate ? row.birthDate.toISOString().slice(0, 10) : null,
+          gender: row.gender,
+          phone: row.phone,
+          personalEmail: row.personalEmail,
+          address: row.address,
+        }
+      : null,
   }
 }
 
@@ -79,7 +100,7 @@ function accountStatusWhere(status: AccountStatus): Prisma.EmployeeWhereInput {
 }
 
 export const employeeService = {
-  async list(query: EmployeeListQuery) {
+  async list(query: EmployeeListQuery, viewer?: EmployeeViewer) {
     const where: Prisma.EmployeeWhereInput = {}
     const and: Prisma.EmployeeWhereInput[] = []
 
@@ -114,10 +135,13 @@ export const employeeService = {
       prisma.employee.count({ where }),
     ])
 
-    return { data: rows.map(serializeEmployee), meta: { page: query.page, limit: query.limit, total } }
+    return {
+      data: rows.map((row) => serializeEmployee(row, canSeePersonal(viewer, row.id))),
+      meta: { page: query.page, limit: query.limit, total },
+    }
   },
 
-  async getById(id: string) {
+  async getById(id: string, viewer?: EmployeeViewer) {
     const row = await prisma.employee.findUnique({
       where: { id },
       include: {
@@ -131,10 +155,42 @@ export const employeeService = {
     if (!row) throw new HttpError(404, 'Karyawan tidak ditemukan')
 
     return {
-      ...serializeEmployee(row),
+      ...serializeEmployee(row, canSeePersonal(viewer, row.id)),
       subordinates: row.subordinates,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+    }
+  },
+
+  /**
+   * Ulang tahun karyawan aktif dalam rentang (sumber widget dashboard & kalender).
+   * Hanya nama, jabatan, departemen, dan MM-dd — tanpa tahun lahir.
+   */
+  async birthdays(query: { from: string; to: string; departmentId?: string }) {
+    const rows = await prisma.employee.findMany({
+      where: {
+        status: 'ACTIVE',
+        birthDate: { not: null },
+        ...(query.departmentId ? { departmentId: query.departmentId } : {}),
+      },
+      select: { id: true, fullName: true, birthDate: true, jobTitle: jobTitleSelect, department: refSelect },
+    })
+
+    const occurrences = birthdaysInRange(
+      rows.map((row) => ({ ...row, birthDate: row.birthDate! })),
+      query.from,
+      query.to,
+    )
+    return {
+      data: occurrences.map(({ employee, date, birthday }) => ({
+        id: employee.id,
+        fullName: employee.fullName,
+        jobTitle: employee.jobTitle,
+        department: employee.department,
+        birthday,
+        date,
+      })),
+      meta: { from: query.from, to: query.to, total: occurrences.length },
     }
   },
 

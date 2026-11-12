@@ -11,6 +11,8 @@ import {
 } from '../../lib/route-helpers.js'
 import {
   accountInputSchema,
+  birthdayItemSchema,
+  birthdaysQuerySchema,
   createEmployeeSchema,
   employeeDetailSchema,
   employeeListQuerySchema,
@@ -21,11 +23,19 @@ import {
   treeNodeBaseSchema,
   updateEmployeeSchema,
 } from './employee.schema.js'
-import { employeeService } from './employee.service.js'
+import { employeeService, type EmployeeViewer } from './employee.service.js'
+import type { FastifyRequest } from 'fastify'
 import { employeeAdminService } from './employee.admin.service.js'
 import { auditContextFrom } from '../../lib/audit.js'
 
 const TAG = 'Employees'
+
+function viewerOf(request: FastifyRequest): EmployeeViewer {
+  return {
+    isAdmin: request.userSession?.role.code === 'SUPER_ADMIN',
+    employeeId: request.userSession?.employee?.id ?? null,
+  }
+}
 const ADMIN_ONLY = [authenticate, authorize(['SUPER_ADMIN'])]
 
 const detailJson = toJsonSchema(employeeDetailSchema)
@@ -99,7 +109,7 @@ export const employeeRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       try {
         const query = parse(employeeListQuerySchema, request.query)
-        const result = await employeeService.list(query)
+        const result = await employeeService.list(query, viewerOf(request))
         return reply.send({ statusCode: 200, ...result })
       } catch (err) {
         return sendError(reply, err)
@@ -149,6 +159,43 @@ export const employeeRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // US-2.7: ulang tahun dalam rentang — didaftarkan sebelum /:id
+  fastify.get('/birthdays', {
+    preHandler: [authenticate],
+    schema: {
+      tags: [TAG],
+      summary: 'Ulang tahun karyawan',
+      description:
+        'Ulang tahun karyawan aktif dalam rentang tanggal (default hari ini s.d. +30 hari, maks. 366 hari). ' +
+        'Hanya nama, jabatan, departemen, dan MM-dd — tahun lahir tidak ditampilkan. ' +
+        '29 Februari dirayakan 28 Februari pada tahun non-kabisat.',
+      security: [{ bearerAuth: [] }],
+      querystring: toJsonSchema(birthdaysQuerySchema),
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            statusCode: { type: 'number' },
+            data: { type: 'array', items: toJsonSchema(birthdayItemSchema) },
+            meta: {
+              type: 'object',
+              properties: { from: { type: 'string' }, to: { type: 'string' }, total: { type: 'number' } },
+            },
+          },
+        },
+        ...errorResponses(400, 401),
+      },
+    },
+    handler: async (request, reply) => {
+      try {
+        const query = parse(birthdaysQuerySchema, request.query)
+        return reply.send({ statusCode: 200, ...(await employeeService.birthdays(query)) })
+      } catch (err) {
+        return sendError(reply, err)
+      }
+    },
+  })
+
   // US-2.5: detail
   fastify.get('/:id', {
     preHandler: [authenticate],
@@ -169,7 +216,7 @@ export const employeeRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       try {
         const { id } = parse(idParamsSchema, request.params)
-        return reply.send({ statusCode: 200, data: await employeeService.getById(id) })
+        return reply.send({ statusCode: 200, data: await employeeService.getById(id, viewerOf(request)) })
       } catch (err) {
         return sendError(reply, err)
       }
