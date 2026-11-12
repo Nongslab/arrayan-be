@@ -144,17 +144,33 @@ async function findEmployeeOrThrow(tx: Tx, id: string) {
   return employee
 }
 
+/** `birthDate` string → Date (null tetap null, undefined = tidak diubah). */
+function birthDateData(birthDate: string | null | undefined) {
+  if (birthDate === undefined) return {}
+  return { birthDate: birthDate === null ? null : toDate(birthDate) }
+}
+
+/** Tanggal lahir harus sebelum tanggal masuk kerja. */
+function assertBirthBeforeJoin(birthDate: Date | null | undefined, joinDate: Date) {
+  if (birthDate && birthDate >= joinDate) {
+    throw new HttpError(400, 'birthDate harus sebelum joinDate')
+  }
+}
+
 export const employeeAdminService = {
   /** US-2.2: buat data karyawan, opsional sekaligus akun + undangan. */
   async create(input: CreateEmployeeInput, ctx: AuditContext) {
-    const { account, joinDate, ...fields } = input
+    const { account, joinDate, birthDate, ...fields } = input
+    const join = toDate(joinDate ?? todayDateOnly())
+    const birth = birthDateData(birthDate)
+    assertBirthBeforeJoin(birth.birthDate, join)
 
     const { employeeId, invitation } = await prisma.$transaction(async (tx) => {
       await assertMasterReferences(tx, fields)
       await assertManager(tx, undefined, fields.managerId)
 
       const employee = await tx.employee.create({
-        data: { ...fields, joinDate: toDate(joinDate ?? todayDateOnly()) },
+        data: { ...fields, ...birth, joinDate: join },
       })
       await recordAudit(tx, ctx, {
         action: 'employee.create',
@@ -173,14 +189,19 @@ export const employeeAdminService = {
   },
 
   async update(id: string, input: UpdateEmployeeInput, ctx: AuditContext) {
-    const { joinDate, ...fields } = input
+    const { joinDate, birthDate, ...fields } = input
     await prisma.$transaction(async (tx) => {
       const { user: _user, ...before } = await findEmployeeOrThrow(tx, id)
+      const birth = birthDateData(birthDate)
+      assertBirthBeforeJoin(
+        'birthDate' in birth ? birth.birthDate : before.birthDate,
+        joinDate ? toDate(joinDate) : before.joinDate,
+      )
       await assertMasterReferences(tx, fields)
       await assertManager(tx, id, fields.managerId)
       const after = await tx.employee.update({
         where: { id },
-        data: { ...fields, ...(joinDate ? { joinDate: toDate(joinDate) } : {}) },
+        data: { ...fields, ...birth, ...(joinDate ? { joinDate: toDate(joinDate) } : {}) },
       })
       await recordAudit(tx, ctx, {
         action: 'employee.update',

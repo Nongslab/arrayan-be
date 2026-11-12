@@ -4,6 +4,7 @@ import { isValidDateOnly } from '../master/master.rules.js'
 
 export const employmentTypeSchema = z.enum(['PROBATION', 'KARTAP', 'PKL'])
 export const employeeStatusSchema = z.enum(['ACTIVE', 'INACTIVE'])
+export const genderSchema = z.enum(['MALE', 'FEMALE'])
 export const accountStatusSchema = z.enum(['ACTIVE', 'PENDING_ACTIVATION', 'DISABLED', 'NO_ACCOUNT'])
 const hierarchyLevel = z.enum(['MANAGEMENT', 'SR_MANAGER', 'MANAGER', 'SUPERVISOR', 'STAFF'])
 
@@ -38,6 +39,17 @@ export const employeeTreeQuerySchema = z.object({
 
 const dateOnly = z.string().refine(isValidDateOnly, 'format yyyy-MM-dd yang valid')
 const optionalRef = z.string().uuid('harus UUID').nullable().optional()
+
+/** Tanggal hari ini (yyyy-MM-dd) di zona waktu kantor default. */
+export function todayInJakarta(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date())
+}
+
+const birthDateField = dateOnly
+  .refine((value) => value >= '1900-01-01' && value <= todayInJakarta(), 'tidak boleh di masa depan atau sebelum 1900')
+  .nullable()
+  .optional()
+  .describe('yyyy-MM-dd')
 export const roleCodeSchema = z.enum(['SUPER_ADMIN', 'MANAGEMENT', 'SR_MANAGER', 'MANAGER', 'SUPERVISOR', 'STAFF'])
 
 export const accountInputSchema = z
@@ -64,6 +76,17 @@ const employeeFields = {
   officeLocationId: optionalRef,
   workShiftId: optionalRef,
   managerId: optionalRef.describe('Atasan langsung (karyawan aktif)'),
+  // Data pribadi (US-2.7) — hanya terlihat oleh SUPER_ADMIN & karyawan ybs.
+  birthDate: birthDateField,
+  gender: genderSchema.nullable().optional(),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9][0-9 -]{6,19}$/, 'format telepon tidak valid, mis. +62 812-3456-7890')
+    .nullable()
+    .optional(),
+  personalEmail: z.string().trim().toLowerCase().email('format email tidak valid').max(254).nullable().optional(),
+  address: z.string().trim().max(500).nullable().optional(),
 }
 
 export const createEmployeeSchema = z
@@ -132,6 +155,16 @@ export const employeeSchema = z.object({
     .nullable(),
   accountStatus: accountStatusSchema,
   subordinateCount: z.number().int(),
+  personal: z
+    .object({
+      birthDate: z.string().nullable(),
+      gender: genderSchema.nullable(),
+      phone: z.string().nullable(),
+      personalEmail: z.string().nullable(),
+      address: z.string().nullable(),
+    })
+    .nullable()
+    .describe('Data pribadi — hanya untuk SUPER_ADMIN & karyawan ybs; null untuk yang lain'),
 })
 
 export const employeeDetailSchema = employeeSchema.extend({
@@ -155,4 +188,30 @@ export const invitationSchema = z.object({
   driver: z.string().describe('Kanal pengiriman undangan (saat ini `log`)'),
   expiresAt: z.string(),
   devActivationLink: z.string().optional().describe('Hanya di luar production — untuk uji coba tanpa email'),
+})
+
+export const birthdaysQuerySchema = z
+  .object({
+    from: dateOnly.optional().describe('Default hari ini (Asia/Jakarta)'),
+    to: dateOnly.optional().describe('Default from + 30 hari'),
+    departmentId: z.string().uuid().optional(),
+  })
+  .transform((q) => {
+    const from = q.from ?? todayInJakarta()
+    const to = q.to ?? new Date(new Date(`${from}T00:00:00.000Z`).getTime() + 30 * 86_400_000).toISOString().slice(0, 10)
+    return { from, to, departmentId: q.departmentId }
+  })
+  .refine((q) => q.from <= q.to, { message: 'from harus ≤ to', path: ['from'] })
+  .refine(
+    (q) => new Date(`${q.to}T00:00:00Z`).getTime() - new Date(`${q.from}T00:00:00Z`).getTime() <= 366 * 86_400_000,
+    { message: 'rentang maksimal 366 hari', path: ['to'] },
+  )
+
+export const birthdayItemSchema = z.object({
+  id: z.string(),
+  fullName: z.string(),
+  jobTitle,
+  department: ref.nullable(),
+  birthday: z.string().describe('MM-dd (tanpa tahun lahir)'),
+  date: z.string().describe('Tanggal ulang tahun di dalam rentang (yyyy-MM-dd)'),
 })
