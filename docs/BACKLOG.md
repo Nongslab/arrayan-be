@@ -44,7 +44,7 @@ flowchart LR
 | 8 | US-3.2 Clock-in / clock-out aplikasi | 🟡 Q-6 |
 | 9 | US-3.4 Rekap kehadiran | ✅ |
 | 10 | US-6.5 Manajemen training & remarks | ✅ |
-| 11 | US-4.1 Dashboard 5-in-1 | 🟢 (setelah 1, 4, 7, 10) |
+| 11 | US-4.1 Dashboard 5-in-1 | ✅ |
 | 12 | US-6.4 Kalender perusahaan & personal | 🟢 |
 | 13 | US-6.1–6.3 KPI (penilaian, visibilitas, grafik) | 🟡 Q-9 |
 | 14 | US-2.8 Dokumen karyawan terenkripsi | 🟡 Q-8 |
@@ -153,7 +153,7 @@ flowchart LR
 
 ## Fase 4 — Dashboard 5-in-1 (PRD Module 3)
 
-### US-4.1 Widget harian 🟢 (setelah US-2.7, 3.1, 5.2, 6.5)
+### US-4.1 Widget harian ✅ selesai
 **Sebagai** karyawan (semua level, PRD), **saya ingin** melihat ringkasan hari ini dalam satu layar.
 - `GET /api/dashboard/today` → `{ late[], onLeave[], sick[], birthdays[], trainings[] }` berdasarkan tanggal zona waktu kantor.
   1. **Telat hari ini** — `AttendanceDay.status = LATE` (+ menit).
@@ -163,6 +163,7 @@ flowchart LR
   5. **Jadwal training** — hari ini & N hari ke depan (US-6.5).
 - Hanya data minimum (nama, jabatan, departemen) — tanpa alasan cuti/sakit (privasi). Karyawan nonaktif dikecualikan.
 - Satu request, target < 300 ms untuk 50 karyawan.
+- **Implementasi:** `GET /api/dashboard/today?date=&upcomingTrainingDays=` (default hari ini, 7 hari). Cuti = hanya `APPROVED` (PRD: "telah disetujui"); **sakit = `PENDING` + `APPROVED`** (PRD: "yang mengajukan izin sakit"), dengan field `status`. Telat dihitung engine US-3.1 (karyawan aktif). Training `SCHEDULED` yang berlangsung hari ini s.d. +N hari, dengan `isParticipant`. Tanpa alasan cuti/sakit & tanpa tahun lahir. Uji lokal: ±10 ms.
 
 ---
 

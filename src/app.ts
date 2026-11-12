@@ -14,6 +14,7 @@ import { auditRoutes } from './modules/audit/audit.routes.js'
 import { leaveRoutes } from './modules/leave/leave.routes.js'
 import { attendanceRoutes } from './modules/attendance/attendance.routes.js'
 import { trainingRoutes } from './modules/training/training.routes.js'
+import { dashboardRoutes } from './modules/dashboard/dashboard.routes.js'
 
 /**
  * Field sensitif yang disamarkan dari log (defense in depth — serializer bawaan Fastify
@@ -123,6 +124,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
         { name: 'Leaves', description: 'Cuti, izin & sakit: saldo, pengajuan, pembatalan' },
         { name: 'Attendance', description: 'Kehadiran: status harian dari log absensi, shift, libur & cuti' },
         { name: 'Trainings', description: 'Jadwal training, peserta, remarks & laporan' },
+        { name: 'Dashboard', description: 'Dashboard 5-in-1: telat, cuti, sakit, ulang tahun, training' },
         { name: 'Audit Log', description: 'Jejak aksi admin & event keamanan (SUPER_ADMIN)' },
         ...MASTER_SWAGGER_TAGS,
       ],
@@ -169,6 +171,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await fastify.register(leaveRoutes, { prefix: '/api/leaves' })
   await fastify.register(attendanceRoutes, { prefix: '/api/attendance' })
   await fastify.register(trainingRoutes, { prefix: '/api/trainings' })
+  await fastify.register(dashboardRoutes, { prefix: '/api/dashboard' })
 
   return fastify
 }
