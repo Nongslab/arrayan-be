@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { authenticate } from '../../middlewares/auth.middleware.js'
+import { authenticate, authorize } from '../../middlewares/auth.middleware.js'
 import {
   errorResponses,
   idParamsSchema,
@@ -10,15 +10,50 @@ import {
   zodOnlyValidator,
 } from '../../lib/route-helpers.js'
 import {
+  accountInputSchema,
+  createEmployeeSchema,
   employeeDetailSchema,
   employeeListQuerySchema,
   employeeSchema,
+  employeeStatusInputSchema,
   employeeTreeQuerySchema,
+  invitationSchema,
   treeNodeBaseSchema,
+  updateEmployeeSchema,
 } from './employee.schema.js'
 import { employeeService } from './employee.service.js'
+import { employeeAdminService } from './employee.admin.service.js'
 
 const TAG = 'Employees'
+const ADMIN_ONLY = [authenticate, authorize(['SUPER_ADMIN'])]
+
+const detailJson = toJsonSchema(employeeDetailSchema)
+const invitationJson = toJsonSchema(invitationSchema)
+
+/** Response tulis: data karyawan + (opsional) info undangan aktivasi. */
+function writeResponse(status: number, description: string) {
+  return {
+    description,
+    type: 'object',
+    properties: {
+      statusCode: { type: 'number', example: status },
+      message: { type: 'string' },
+      data: detailJson,
+      invitation: invitationJson,
+    },
+  }
+}
+
+const createExample = {
+  nik: 'EMP-2026-014',
+  fullName: 'Budi Santoso',
+  employmentType: 'PROBATION',
+  joinDate: '2026-11-17',
+  jobTitleId: '<uuid jabatan dari GET /api/master/job-titles>',
+  departmentId: '<uuid departemen>',
+  managerId: '<uuid atasan>',
+  account: { email: 'budi.santoso@arrayan.com' },
+}
 
 const treeNodeSchema = (() => {
   const base = toJsonSchema(treeNodeBaseSchema) as { properties: Record<string, unknown> }
@@ -134,6 +169,147 @@ export const employeeRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const { id } = parse(idParamsSchema, request.params)
         return reply.send({ statusCode: 200, data: await employeeService.getById(id) })
+      } catch (err) {
+        return sendError(reply, err)
+      }
+    },
+  })
+
+  // ---------------------------------------------------------------------------
+  // US-2.2: Admin provisioning (SUPER_ADMIN / tim HR GA)
+  // ---------------------------------------------------------------------------
+
+  fastify.post('/', {
+    preHandler: ADMIN_ONLY,
+    schema: {
+      tags: [TAG],
+      summary: 'Tambah karyawan (opsional sekaligus akun)',
+      description:
+        'Membuat data karyawan. Bila `account` diisi, akun login dibuat berstatus PENDING_ACTIVATION dan undangan ' +
+        'aktivasi dikirim. Role default mengikuti level jabatan. Master data & atasan harus aktif.',
+      security: [{ bearerAuth: [] }],
+      body: { ...toJsonSchema(createEmployeeSchema), examples: [createExample] },
+      response: { 201: writeResponse(201, 'Karyawan dibuat'), ...errorResponses(400, 401, 403, 409, 422) },
+    },
+    handler: async (request, reply) => {
+      try {
+        const input = parse(createEmployeeSchema, request.body)
+        const { employee, invitation } = await employeeAdminService.create(input)
+        return reply.status(201).send({
+          statusCode: 201,
+          message: invitation ? 'Karyawan dibuat dan undangan aktivasi dikirim' : 'Karyawan dibuat',
+          data: employee,
+          ...(invitation ? { invitation } : {}),
+        })
+      } catch (err) {
+        return sendError(reply, err)
+      }
+    },
+  })
+
+  fastify.patch('/:id', {
+    preHandler: ADMIN_ONLY,
+    schema: {
+      tags: [TAG],
+      summary: 'Ubah data karyawan',
+      description: 'Hanya field yang dikirim yang diperbarui. `managerId` ditolak bila membentuk siklus atasan.',
+      security: [{ bearerAuth: [] }],
+      params: toJsonSchema(idParamsSchema),
+      body: toJsonSchema(updateEmployeeSchema),
+      response: { 200: writeResponse(200, 'Karyawan diperbarui'), ...errorResponses(400, 401, 403, 404, 409, 422) },
+    },
+    handler: async (request, reply) => {
+      try {
+        const { id } = parse(idParamsSchema, request.params)
+        const input = parse(updateEmployeeSchema, request.body)
+        const data = await employeeAdminService.update(id, input)
+        return reply.send({ statusCode: 200, message: 'Data karyawan diperbarui', data })
+      } catch (err) {
+        return sendError(reply, err)
+      }
+    },
+  })
+
+  fastify.post('/:id/account', {
+    preHandler: ADMIN_ONLY,
+    schema: {
+      tags: [TAG],
+      summary: 'Buatkan akun login & kirim undangan',
+      description: 'Untuk karyawan aktif yang belum punya akun. Akun berstatus PENDING_ACTIVATION sampai diaktivasi.',
+      security: [{ bearerAuth: [] }],
+      params: toJsonSchema(idParamsSchema),
+      body: { ...toJsonSchema(accountInputSchema), examples: [{ email: 'budi.santoso@arrayan.com' }] },
+      response: { 201: writeResponse(201, 'Akun dibuat'), ...errorResponses(400, 401, 403, 404, 409, 422) },
+    },
+    handler: async (request, reply) => {
+      try {
+        const { id } = parse(idParamsSchema, request.params)
+        const input = parse(accountInputSchema, request.body)
+        const { employee, invitation } = await employeeAdminService.createAccount(id, input)
+        return reply
+          .status(201)
+          .send({ statusCode: 201, message: 'Akun dibuat dan undangan aktivasi dikirim', data: employee, invitation })
+      } catch (err) {
+        return sendError(reply, err)
+      }
+    },
+  })
+
+  fastify.post('/:id/account/invitation', {
+    preHandler: ADMIN_ONLY,
+    schema: {
+      tags: [TAG],
+      summary: 'Kirim ulang undangan aktivasi',
+      description: 'Hanya untuk akun PENDING_ACTIVATION. Link sebelumnya otomatis tidak berlaku.',
+      security: [{ bearerAuth: [] }],
+      params: toJsonSchema(idParamsSchema),
+      response: {
+        200: {
+          type: 'object',
+          properties: { statusCode: { type: 'number' }, message: { type: 'string' }, invitation: invitationJson },
+        },
+        ...errorResponses(400, 401, 403, 404, 409, 422),
+      },
+    },
+    handler: async (request, reply) => {
+      try {
+        const { id } = parse(idParamsSchema, request.params)
+        const { invitation } = await employeeAdminService.resendInvitation(id)
+        return reply.send({ statusCode: 200, message: 'Undangan aktivasi dikirim ulang', invitation })
+      } catch (err) {
+        return sendError(reply, err)
+      }
+    },
+  })
+
+  fastify.patch('/:id/status', {
+    preHandler: ADMIN_ONLY,
+    schema: {
+      tags: [TAG],
+      summary: 'Nonaktifkan / aktifkan kembali karyawan',
+      description:
+        'INACTIVE (karyawan keluar): data tetap tersimpan, akun dinonaktifkan dan seluruh sesi dicabut. ' +
+        'ACTIVE (kembali bekerja): data penugasan lama dipertahankan; akun (bila ada) wajib aktivasi ulang lewat undangan baru.',
+      security: [{ bearerAuth: [] }],
+      params: toJsonSchema(idParamsSchema),
+      body: { ...toJsonSchema(employeeStatusInputSchema), examples: [{ status: 'INACTIVE', exitDate: '2026-12-31' }] },
+      response: { 200: writeResponse(200, 'Status diperbarui'), ...errorResponses(400, 401, 403, 404, 409, 422) },
+    },
+    handler: async (request, reply) => {
+      try {
+        const { id } = parse(idParamsSchema, request.params)
+        const input = parse(employeeStatusInputSchema, request.body)
+        const { employee, invitation } = await employeeAdminService.setStatus(
+          id,
+          input,
+          request.userSession?.employee?.id,
+        )
+        return reply.send({
+          statusCode: 200,
+          message: input.status === 'INACTIVE' ? 'Karyawan dinonaktifkan' : 'Karyawan diaktifkan kembali',
+          data: employee,
+          ...(invitation ? { invitation } : {}),
+        })
       } catch (err) {
         return sendError(reply, err)
       }

@@ -57,7 +57,7 @@ describe('employee API (integration)', () => {
     // Akun login nonaktif untuk Zara → accountStatus INACTIVE
     const staffRole = await prisma.role.findUniqueOrThrow({ where: { code: 'STAFF' } })
     const user = await prisma.user.create({
-      data: { email: `itest.zara.${SUFFIX.toLowerCase()}@arrayan.test`, passwordHash: 'x', roleId: staffRole.id, isActive: false },
+      data: { email: `itest.zara.${SUFFIX.toLowerCase()}@arrayan.test`, passwordHash: 'x', roleId: staffRole.id, status: 'DISABLED' },
     })
     await prisma.employee.update({ where: { id: ids.S2 }, data: { userId: user.id } })
   })
@@ -100,7 +100,7 @@ describe('employee API (integration)', () => {
     it('filter atasan, jenis kepegawaian, dan status akun', async () => {
       expect(niks(await get(`?managerId=${ids.MGR}`))).toEqual([nik('S1'), nik('S2')])
       expect(niks(await get(`?q=${SUFFIX}&employmentType=PROBATION`))).toEqual([nik('S2')])
-      expect(niks(await get(`?q=${SUFFIX}&accountStatus=INACTIVE`))).toEqual([nik('S2')])
+      expect(niks(await get(`?q=${SUFFIX}&accountStatus=DISABLED`))).toEqual([nik('S2')])
       expect(niks(await get(`?q=${SUFFIX}&accountStatus=NO_ACCOUNT`))).toHaveLength(3)
     })
 
@@ -135,7 +135,7 @@ describe('employee API (integration)', () => {
       expect(data.subordinates.map((s: { nik: string }) => s.nik)).toEqual([nik('S1'), nik('S2')])
 
       const zara = await get(`/${ids.S2}`)
-      expect(zara.json().data.account).toMatchObject({ role: { code: 'STAFF' }, status: 'INACTIVE' })
+      expect(zara.json().data.account).toMatchObject({ role: { code: 'STAFF' }, status: 'DISABLED' })
       expect(zara.body).not.toMatch(/passwordHash|password_hash|tokenHash/)
     })
 
