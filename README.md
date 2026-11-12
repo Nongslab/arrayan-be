@@ -128,6 +128,7 @@ Fitur autentikasi Swagger:
 
 Ringkasan sesi auth:
 * **Access token** JWT 15 menit — dikirim via header `Authorization: Bearer <token>` atau cookie HttpOnly `arrayan_access_token`.
+* **Validasi sesi per request** — setiap request terautentikasi dicocokkan ke DB (status `ACTIVE` + `sessionVersion`). Menonaktifkan akun, ganti password, atau reset password langsung membatalkan semua access token lama (401 *"Sesi tidak berlaku lagi"*); perubahan role berlaku seketika.
 * **Refresh token** opaque 7 hari — body `refreshToken` atau cookie `arrayan_refresh_token` (path `/api/auth`), disimpan sebagai hash SHA-256 dan dirotasi setiap `POST /api/auth/refresh`.
 * **Login limiter** — 5 percobaan gagal per IP + email dalam 15 menit → HTTP `429` dengan header `Retry-After`.
 * **Onboarding akun** — HR (`SUPER_ADMIN`) membuat karyawan & akun via `POST /api/employees`; karyawan mengaktivasi lewat `POST /api/auth/activate`.

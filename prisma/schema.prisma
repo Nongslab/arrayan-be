@@ -27,19 +27,21 @@ model Role {
 // 2. User Accounts (Khusus Autentikasi & Keamanan)
 // -------------------------------------------------------------
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
+  id             String         @id @default(uuid())
+  email          String         @unique
   /// Null selama akun belum diaktivasi (PENDING_ACTIVATION).
-  passwordHash  String?        @map("password_hash")
-  roleId        String         @map("role_id")
-  role          Role           @relation(fields: [roleId], references: [id])
-  employee      Employee?
-  refreshTokens RefreshToken[]
-  accountTokens AccountToken[]
-  status        UserStatus     @default(ACTIVE)
-  lastLoginAt   DateTime?      @map("last_login_at")
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
+  passwordHash   String?        @map("password_hash")
+  roleId         String         @map("role_id")
+  role           Role           @relation(fields: [roleId], references: [id])
+  employee       Employee?
+  refreshTokens  RefreshToken[]
+  accountTokens  AccountToken[]
+  status         UserStatus     @default(ACTIVE)
+  /// Naik setiap akun dinonaktifkan / password diganti / di-reset → semua access token lama tidak berlaku.
+  sessionVersion Int            @default(0) @map("session_version")
+  lastLoginAt    DateTime?      @map("last_login_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
 
   @@map("users")
 }

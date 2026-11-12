@@ -32,6 +32,7 @@ export function toSessionPayload(user: UserWithSession): UserSessionPayload {
   return {
     id: user.id,
     email: user.email,
+    sessionVersion: user.sessionVersion,
     role: {
       code: user.role.code,
       name: user.role.name,
@@ -163,6 +164,17 @@ export const authService = {
   },
 
   /**
+   * Muat sesi terkini untuk request terautentikasi. Mengembalikan null bila user tidak ada,
+   * tidak ACTIVE, atau `sessionVersion` di token sudah usang (akun dinonaktifkan /
+   * password diganti / di-reset setelah token terbit). Role & data diambil segar dari DB.
+   */
+  async loadActiveSession(userId: string, sessionVersion: unknown): Promise<UserSessionPayload | null> {
+    const user = await prisma.user.findUnique({ where: { id: userId }, include: sessionInclude })
+    if (!user || user.status !== 'ACTIVE' || user.sessionVersion !== sessionVersion) return null
+    return toSessionPayload(user)
+  },
+
+  /**
    * US-2.3: aktivasi akun dengan token undangan. Token harus ACTIVATION, belum dipakai,
    * belum kedaluwarsa, milik akun PENDING_ACTIVATION yang karyawannya masih aktif.
    */
@@ -216,7 +228,7 @@ export const authService = {
       if (user.status !== 'ACTIVE' || user.employee?.status === 'INACTIVE') {
         throw new AuthFlowError(invalidMessage)
       }
-      await tx.user.update({ where: { id: user.id }, data: { passwordHash } })
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash, sessionVersion: { increment: 1 } } })
       await tx.refreshToken.updateMany({ where: { userId: user.id, revoked: false }, data: { revoked: true } })
       return { email: user.email }
     })
@@ -237,7 +249,7 @@ export const authService = {
 
     const passwordHash = await bcrypt.hash(input.newPassword, BCRYPT_ROUNDS)
     await prisma.$transaction([
-      prisma.user.update({ where: { id: userId }, data: { passwordHash } }),
+      prisma.user.update({ where: { id: userId }, data: { passwordHash, sessionVersion: { increment: 1 } } }),
       prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } }),
       prisma.accountToken.deleteMany({ where: { userId, purpose: 'PASSWORD_RESET', usedAt: null } }),
     ])

@@ -219,7 +219,10 @@ export const employeeAdminService = {
 
         await tx.employee.update({ where: { id }, data: { status: 'INACTIVE', exitDate } })
         if (employee.user) {
-          await tx.user.update({ where: { id: employee.user.id }, data: { status: 'DISABLED' } })
+          await tx.user.update({
+            where: { id: employee.user.id },
+            data: { status: 'DISABLED', sessionVersion: { increment: 1 } },
+          })
           await tx.refreshToken.updateMany({ where: { userId: employee.user.id, revoked: false }, data: { revoked: true } })
           await revokeAccountTokens(tx, employee.user.id)
         }
@@ -231,7 +234,7 @@ export const employeeAdminService = {
 
       await tx.user.update({
         where: { id: employee.user.id },
-        data: { status: 'PENDING_ACTIVATION', passwordHash: null },
+        data: { status: 'PENDING_ACTIVATION', passwordHash: null, sessionVersion: { increment: 1 } },
       })
       const { token, expiresAt } = await issueAccountToken(tx, employee.user.id, 'ACTIVATION')
       return { email: employee.user.email, fullName: employee.fullName, token, expiresAt }

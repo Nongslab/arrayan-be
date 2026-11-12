@@ -1,5 +1,20 @@
 import { describe, it, expect, vi } from 'vitest'
-import { authenticate, authorize } from './auth.middleware.js'
+import { createAuthenticate, authorize } from './auth.middleware.js'
+import type { UserSessionPayload } from '../modules/auth/auth.schema.js'
+
+const freshSession: UserSessionPayload = {
+  id: 'user-123',
+  email: 'user@arrayan.com',
+  sessionVersion: 2,
+  role: { code: 'MANAGER', name: 'Manager', permissions: [] },
+  employee: null,
+}
+
+/** Pemuat sesi palsu: hanya sessionVersion 2 milik user-123 yang masih berlaku. */
+const loadSession = vi.fn(async (userId: string, sessionVersion: unknown) =>
+  userId === 'user-123' && sessionVersion === 2 ? freshSession : null,
+)
+const authenticate = createAuthenticate(loadSession)
 import type { FastifyRequest, FastifyReply } from 'fastify'
 
 describe('auth.middleware', () => {
@@ -32,6 +47,7 @@ describe('auth.middleware', () => {
       const mockSession = {
         id: 'user-123',
         email: 'user@arrayan.com',
+        sessionVersion: 2,
         role: { code: 'STAFF', name: 'Staff', permissions: [] },
       }
 
@@ -53,13 +69,15 @@ describe('auth.middleware', () => {
       await authenticate(request, reply)
 
       expect(request.server.jwt.verify).toHaveBeenCalledWith('valid-bearer-token')
-      expect(request.userSession).toEqual(mockSession)
+      // Sesi diambil segar dari DB (role terbaru), bukan dari isi token
+      expect(request.userSession).toEqual(freshSession)
     })
 
     it('harus mengisi userSession dari cookie jika header Authorization tidak ada', async () => {
       const mockSession = {
         id: 'user-123',
         email: 'user@arrayan.com',
+        sessionVersion: 2,
         role: { code: 'STAFF', name: 'Staff', permissions: [] },
       }
 
@@ -81,7 +99,8 @@ describe('auth.middleware', () => {
       await authenticate(request, reply)
 
       expect(request.server.jwt.verify).toHaveBeenCalledWith('valid-cookie-token')
-      expect(request.userSession).toEqual(mockSession)
+      // Sesi diambil segar dari DB (role terbaru), bukan dari isi token
+      expect(request.userSession).toEqual(freshSession)
     })
 
     it('harus mengembalikan 401 jika token invalid atau kedaluwarsa', async () => {
@@ -112,6 +131,29 @@ describe('auth.middleware', () => {
           message: 'Token otentikasi tidak valid atau telah kedaluwarsa.',
         }),
       )
+    })
+
+    it('harus mengembalikan 401 jika sessionVersion token sudah usang (akun dinonaktifkan / password diganti)', async () => {
+      const request = {
+        headers: { authorization: 'Bearer old-token' },
+        cookies: {},
+        server: {
+          jwt: { verify: vi.fn().mockReturnValue({ id: 'user-123', sessionVersion: 1 }) },
+        },
+      } as unknown as FastifyRequest
+
+      const statusMock = vi.fn().mockReturnThis()
+      const sendMock = vi.fn()
+      const reply = { status: statusMock, send: sendMock } as unknown as FastifyReply
+
+      await authenticate(request, reply)
+
+      expect(loadSession).toHaveBeenCalledWith('user-123', 1)
+      expect(statusMock).toHaveBeenCalledWith(401)
+      expect(sendMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Sesi tidak berlaku lagi. Silakan login kembali.' }),
+      )
+      expect(request.userSession).toBeUndefined()
     })
   })
 

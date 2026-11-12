@@ -33,6 +33,8 @@ export type ActivateInput = z.infer<typeof activateSchema>
 export interface UserSessionPayload {
   id: string
   email: string
+  /** Versi sesi user saat token diterbitkan; harus sama dengan DB agar token berlaku. */
+  sessionVersion: number
   role: {
     code: string
     name: string
