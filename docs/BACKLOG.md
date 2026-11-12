@@ -43,7 +43,7 @@ flowchart LR
 | 7 | US-3.1 Engine status kehadiran | ✅ |
 | 8 | US-3.2 Clock-in / clock-out aplikasi | 🟡 Q-6 |
 | 9 | US-3.4 Rekap kehadiran | ✅ |
-| 10 | US-6.5 Manajemen training & remarks | 🟢 |
+| 10 | US-6.5 Manajemen training & remarks | ✅ |
 | 11 | US-4.1 Dashboard 5-in-1 | 🟢 (setelah 1, 4, 7, 10) |
 | 12 | US-6.4 Kalender perusahaan & personal | 🟢 |
 | 13 | US-6.1–6.3 KPI (penilaian, visibilitas, grafik) | 🟡 Q-9 |
@@ -186,11 +186,12 @@ flowchart LR
 - `GET /api/calendar?from=&to=` menggabungkan: `Holiday`, ulang tahun (US-2.7), `CalendarEvent`, training yang diikuti (US-6.5), cuti/izin pribadi (US-5.2).
 - `?view=master` (SUPER_ADMIN): seluruh jadwal karyawan.
 
-### US-6.5 Manajemen training & remarks 🟢
+### US-6.5 Manajemen training & remarks ✅ selesai
 **Sebagai** HR, **saya ingin** menjadwalkan training dan peserta, **agar** jadwal muncul di dashboard & kalender peserta.
 - `Training` (judul, `TrainingCategory`, penyelenggara internal/eksternal, lokasi, mulai–selesai) + `TrainingParticipant`.
 - Peserta mengisi **remarks/feedback** setelah training selesai (PRD Module 6).
 - `GET /api/trainings/report` — histori & rekap per karyawan/kategori/periode.
+- **Implementasi:** `POST/PATCH /api/trainings` (HR; `status: CANCELLED` untuk membatalkan, tetap tersimpan), `PUT /:id/participants` (ganti daftar; peserta yang sudah memberi remarks tidak bisa dikeluarkan), `PATCH /:id/participants/:employeeId` (kehadiran), `PUT /:id/remarks` (peserta, setelah selesai, rating 1–5), `GET /` agenda untuk semua karyawan (`mine`, rentang tanggal), `GET /:id` (remarks hanya terlihat oleh HR & peserta ybs), `GET /report` (permission `all`/`company.read_all`). Audit log untuk semua aksi HR.
 
 ### US-6.6 Ekspor Excel / PDF 🟡 Q-11
 - Ekspor rekap absensi, cuti, dan training ke `.xlsx` dan PDF (PRD Module 6), difilter periode & departemen; khusus SUPER_ADMIN/Management; dicatat di audit log.
