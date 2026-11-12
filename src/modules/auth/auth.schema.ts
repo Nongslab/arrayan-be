@@ -52,3 +52,26 @@ export interface AuthTokens {
   accessToken: string
   refreshToken: string
 }
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().email({ message: 'Format email tidak valid' }),
+})
+
+export const resetPasswordSchema = z.object({
+  token: z.string().regex(/^[a-f0-9]{64}$/, { message: 'Token reset password tidak valid' }),
+  password: passwordPolicySchema,
+})
+
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, { message: 'Password saat ini wajib diisi' }),
+    newPassword: passwordPolicySchema,
+  })
+  .refine((value) => value.currentPassword !== value.newPassword, {
+    message: 'Password baru harus berbeda dari password saat ini',
+    path: ['newPassword'],
+  })
+
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>
