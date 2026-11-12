@@ -40,7 +40,7 @@ flowchart LR
 | 4 | US-5.2 Pengajuan cuti / izin / sakit (tanpa lampiran dulu) | ✅ |
 | 5 | US-5.4 Pembatalan pengajuan | ✅ |
 | 6 | US-5.3 Approval berjenjang | 🟡 Q-1…Q-4 |
-| 7 | US-3.1 Engine status kehadiran | 🟢 |
+| 7 | US-3.1 Engine status kehadiran | ✅ |
 | 8 | US-3.2 Clock-in / clock-out aplikasi | 🟡 Q-6 |
 | 9 | US-3.4 Rekap kehadiran | 🟢 |
 | 10 | US-6.5 Manajemen training & remarks | 🟢 |
@@ -82,12 +82,13 @@ flowchart LR
 
 ## Fase 3 — Real-Time Attendance (PRD Module 2)
 
-### US-3.1 Engine status kehadiran 🟢
+### US-3.1 Engine status kehadiran ✅ selesai
 **Sebagai** sistem, **saya perlu** menentukan status harian tiap karyawan, **agar** dashboard & rekap konsisten dari sumber mana pun (aplikasi atau fingerprint).
 - Tabel `AttendanceLog` (mentah: sumber `APP`/`FINGERPRINT`/`MANUAL`, waktu, lokasi/IP) dan `AttendanceDay` (ringkasan per karyawan per tanggal).
 - Fungsi murni: shift (`WorkShift.startTime/endTime/lateToleranceMinutes/workDays/isOvernight`) + zona waktu kantor (`OfficeLocation.timezone`) + hari libur + cuti disetujui → `PRESENT_ON_TIME | LATE (menit) | ABSENT | ON_LEAVE | SICK | HOLIDAY | DAY_OFF`.
 - Shift lintas tengah malam dihitung ke tanggal mulai shift.
 - Unit test tabel kasus lengkap (batas toleransi tepat, libur, akhir pekan, overnight).
+- **Implementasi:** hanya log mentah yang disimpan (`AttendanceLog`, sumber `APP`/`FINGERPRINT`/`MANUAL`); status harian **dihitung saat dibaca** sehingga otomatis benar bila cuti disetujui/dibatalkan, hari libur diedit, atau shift diubah — tanpa tabel ringkasan & tanpa proses hitung ulang. Log masuk = log pertama, pulang = log terakhir dalam jendela shift (4 jam sebelum mulai s.d. 8 jam setelah selesai). Terlambat dihitung dari jam mulai shift bila melewati toleransi. Karyawan tanpa shift memakai 08:00–17:00 Senin–Jumat, toleransi 15 menit. `GET /api/attendance/me` (bagian awal US-3.4) menampilkan status per hari + ringkasan.
 
 ### US-3.2 Clock-in / clock-out lewat aplikasi 🟡 Q-6
 **Sebagai** karyawan, **saya ingin** absen dari aplikasi hanya saat berada di kantor, **agar** absensi tidak bisa dicurangi dari rumah.

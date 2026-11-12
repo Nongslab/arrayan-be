@@ -124,6 +124,7 @@ model Employee {
   manager                 Employee?                @relation("EmployeeHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
   subordinates            Employee[]               @relation("EmployeeHierarchy")
   leaveRequests           LeaveRequest[]
+  attendanceLogs          AttendanceLog[]
   leaveBalanceAdjustments LeaveBalanceAdjustment[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -439,4 +440,36 @@ model LeaveBalanceAdjustment {
 
   @@index([employeeId, leaveTypeId, year])
   @@map("leave_balance_adjustments")
+}
+
+// =============================================================
+// 7. KEHADIRAN (Fase 3)
+// Hanya log mentah yang disimpan; status harian dihitung saat dibaca oleh
+// engine (src/modules/attendance/attendance.engine.ts) dari shift, hari libur, & cuti.
+// =============================================================
+enum AttendanceSource {
+  APP
+  FINGERPRINT
+  MANUAL
+}
+
+model AttendanceLog {
+  id         String           @id @default(uuid())
+  employeeId String           @map("employee_id")
+  employee   Employee         @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  /// Waktu kejadian (instant, timestamptz)
+  occurredAt DateTime         @map("occurred_at") @db.Timestamptz(3)
+  source     AttendanceSource
+  latitude   Decimal?         @db.Decimal(9, 6)
+  longitude  Decimal?         @db.Decimal(9, 6)
+  ip         String?
+  /// Kode perangkat fingerprint (US-3.3) bila sumbernya FINGERPRINT
+  deviceCode String?          @map("device_code")
+  /// Alasan koreksi (MANUAL, US-3.5)
+  note       String?
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  @@index([employeeId, occurredAt])
+  @@index([occurredAt])
+  @@map("attendance_logs")
 }
