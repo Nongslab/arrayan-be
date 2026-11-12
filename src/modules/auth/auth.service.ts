@@ -2,9 +2,10 @@ import crypto from 'node:crypto'
 import bcrypt from 'bcrypt'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
-import type { LoginInput, UserSessionPayload } from './auth.schema.js'
+import type { ActivateInput, LoginInput, UserSessionPayload } from './auth.schema.js'
 
 const REFRESH_TOKEN_EXPIRY_DAYS = 7
+export const BCRYPT_ROUNDS = 10
 
 /** Relasi yang dibutuhkan untuk membentuk session payload. */
 const sessionInclude = {
@@ -62,17 +63,19 @@ export const authService = {
       include: sessionInclude,
     })
 
-    if (!user) {
+    // Password dicek lebih dulu agar status akun tidak bocor ke pihak yang tidak tahu password.
+    // Akun PENDING_ACTIVATION belum punya password → selalu gagal dengan pesan generik.
+    if (!user || !user.passwordHash) {
       throw new Error('Email atau password salah')
-    }
-
-    if (!user.isActive) {
-      throw new Error('Akun dinonaktifkan. Hubungi HR Administrator')
     }
 
     const isValidPassword = await bcrypt.compare(input.password, user.passwordHash)
     if (!isValidPassword) {
       throw new Error('Email atau password salah')
+    }
+
+    if (user.status !== 'ACTIVE') {
+      throw new Error('Akun dinonaktifkan. Hubungi HR Administrator')
     }
 
     // Update timestamp last login
@@ -120,7 +123,7 @@ export const authService = {
       data: { revoked: true },
     })
 
-    if (!existingToken.user.isActive) {
+    if (existingToken.user.status !== 'ACTIVE') {
       throw new Error('Akun dinonaktifkan')
     }
 
@@ -148,10 +151,50 @@ export const authService = {
       include: sessionInclude,
     })
 
-    if (!user || !user.isActive) {
+    if (!user || user.status !== 'ACTIVE') {
       throw new Error('User tidak ditemukan atau tidak aktif')
     }
 
     return toSessionPayload(user)
+  },
+
+  /**
+   * US-2.3: aktivasi akun dengan token undangan. Token harus ACTIVATION, belum dipakai,
+   * belum kedaluwarsa, milik akun PENDING_ACTIVATION yang karyawannya masih aktif.
+   */
+  async activateAccount(input: ActivateInput): Promise<{ email: string }> {
+    const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS)
+
+    return prisma.$transaction(async (tx) => {
+      const token = await tx.accountToken.findUnique({
+        where: { tokenHash: hashToken(input.token) },
+        include: { user: { include: { employee: { select: { status: true } } } } },
+      })
+
+      const invalid =
+        !token ||
+        token.purpose !== 'ACTIVATION' ||
+        token.usedAt !== null ||
+        token.expiresAt < new Date() ||
+        token.user.status !== 'PENDING_ACTIVATION' ||
+        token.user.employee?.status === 'INACTIVE'
+      if (invalid) {
+        throw new Error('Link aktivasi tidak valid atau sudah kedaluwarsa. Minta HR mengirim ulang undangan.')
+      }
+
+      // Tandai terpakai secara atomik: gagal bila request lain sudah memakainya lebih dulu.
+      const consumed = await tx.accountToken.updateMany({
+        where: { id: token.id, usedAt: null },
+        data: { usedAt: new Date() },
+      })
+      if (consumed.count !== 1) {
+        throw new Error('Link aktivasi tidak valid atau sudah kedaluwarsa. Minta HR mengirim ulang undangan.')
+      }
+
+      await tx.user.update({ where: { id: token.userId }, data: { passwordHash, status: 'ACTIVE' } })
+      await tx.accountToken.deleteMany({ where: { userId: token.userId, purpose: 'ACTIVATION', usedAt: null } })
+
+      return { email: token.user.email }
+    })
   },
 }

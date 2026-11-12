@@ -78,6 +78,8 @@ Variabel yang dipakai:
 | `DATABASE_URL` | Koneksi PostgreSQL; nilai di `.env.example` cocok dengan `docker-compose.yml` |
 | `JWT_SECRET`, `COOKIE_SECRET` | **Wajib, minimal 32 karakter.** Server menolak start jika kosong. Production: `openssl rand -hex 32` |
 | `TRUST_PROXY` | `true` jika API berada di belakang nginx, agar IP klien terbaca untuk login limiter |
+| `APP_BASE_URL` | URL frontend untuk link aktivasi akun (default `http://localhost:5173`) |
+| `INVITATION_DRIVER` | Kanal undangan aktivasi. Saat ini `log` — link ditampilkan di log & response API **hanya di luar production** |
 | `TEST_DATABASE_URL` | DB khusus integration test (nama wajib mengandung `test`, mis. `arrayan_hris_test`); dibuat otomatis saat `npm run test:int` |
 
 ### 4. Menjalankan Database PostgreSQL

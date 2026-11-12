@@ -72,21 +72,5 @@ export function checkKpiIndicators(indicators: KpiIndicatorRuleInput[]): string 
   return null
 }
 
-/**
- * Departemen: apakah menjadikan `newParentId` sebagai parent dari `id` membentuk siklus?
- * `parentOf` = peta id → parentId seluruh departemen (data master kecil, cukup dimuat sekali).
- */
-export function wouldCreateDepartmentCycle(
-  parentOf: ReadonlyMap<string, string | null>,
-  id: string,
-  newParentId: string,
-): boolean {
-  const visited = new Set<string>()
-  let current: string | null | undefined = newParentId
-  while (current) {
-    if (current === id || visited.has(current)) return true
-    visited.add(current)
-    current = parentOf.get(current) ?? null
-  }
-  return false
-}
+/** Departemen: siklus hierarki parentId — lihat `wouldCreateCycle`. */
+export { wouldCreateCycle as wouldCreateDepartmentCycle } from '../../lib/hierarchy.js'

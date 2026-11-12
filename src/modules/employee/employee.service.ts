@@ -7,24 +7,23 @@ import type { EmployeeListQuery } from './employee.schema.js'
 const jobTitleSelect = { select: { id: true, code: true, name: true, level: true } } as const
 const refSelect = { select: { id: true, code: true, name: true } } as const
 
-const employeeInclude = {
+export const employeeInclude = {
   jobTitle: jobTitleSelect,
   department: refSelect,
   officeLocation: refSelect,
   workShift: refSelect,
   manager: { select: { id: true, nik: true, fullName: true, jobTitle: jobTitleSelect } },
-  user: { select: { email: true, isActive: true, role: { select: { code: true, name: true } } } },
+  user: { select: { email: true, status: true, role: { select: { code: true, name: true } } } },
   _count: { select: { subordinates: true } },
 } satisfies Prisma.EmployeeInclude
 
 type EmployeeRow = Prisma.EmployeeGetPayload<{ include: typeof employeeInclude }>
 
-/** Status akun login karyawan. Akan diperluas dengan PENDING_ACTIVATION saat provisioning (US-2.2). */
-export type AccountStatus = 'ACTIVE' | 'INACTIVE' | 'NO_ACCOUNT'
+/** Status akun login karyawan: status User, atau NO_ACCOUNT bila belum dibuatkan akun. */
+export type AccountStatus = 'ACTIVE' | 'PENDING_ACTIVATION' | 'DISABLED' | 'NO_ACCOUNT'
 
 function accountStatusOf(user: EmployeeRow['user']): AccountStatus {
-  if (!user) return 'NO_ACCOUNT'
-  return user.isActive ? 'ACTIVE' : 'INACTIVE'
+  return user ? user.status : 'NO_ACCOUNT'
 }
 
 /** Bentuk publik karyawan. Tidak pernah memuat passwordHash / token (AGENTS.md §3). */
@@ -35,6 +34,8 @@ export function serializeEmployee(row: EmployeeRow) {
     fullName: row.fullName,
     employmentType: row.employmentType,
     joinDate: row.joinDate.toISOString(),
+    status: row.status,
+    exitDate: row.exitDate ? row.exitDate.toISOString().slice(0, 10) : null,
     jobTitle: row.jobTitle,
     department: row.department,
     officeLocation: row.officeLocation,
@@ -72,10 +73,8 @@ function accountStatusWhere(status: AccountStatus): Prisma.EmployeeWhereInput {
   switch (status) {
     case 'NO_ACCOUNT':
       return { userId: null }
-    case 'ACTIVE':
-      return { user: { isActive: true } }
-    case 'INACTIVE':
-      return { user: { isActive: false } }
+    default:
+      return { user: { status } }
   }
 }
 
@@ -92,6 +91,7 @@ export const employeeService = {
     if (query.jobTitleId) where.jobTitleId = query.jobTitleId
     if (query.managerId) where.managerId = query.managerId
     if (query.employmentType) where.employmentType = query.employmentType
+    if (query.status !== 'ALL') where.status = query.status
     if (query.accountStatus) and.push(accountStatusWhere(query.accountStatus))
     if (query.q) {
       and.push({
@@ -138,9 +138,10 @@ export const employeeService = {
     }
   },
 
-  /** Pohon organisasi seluruh karyawan, atau subtree mulai dari `rootId`. */
+  /** Pohon organisasi karyawan aktif, atau subtree mulai dari `rootId`. */
   async tree(rootId?: string) {
     const rows = await prisma.employee.findMany({
+      where: { status: 'ACTIVE' },
       select: {
         id: true,
         nik: true,

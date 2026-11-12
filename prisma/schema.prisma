@@ -29,17 +29,45 @@ model Role {
 model User {
   id            String         @id @default(uuid())
   email         String         @unique
-  passwordHash  String         @map("password_hash")
+  /// Null selama akun belum diaktivasi (PENDING_ACTIVATION).
+  passwordHash  String?        @map("password_hash")
   roleId        String         @map("role_id")
   role          Role           @relation(fields: [roleId], references: [id])
   employee      Employee?
   refreshTokens RefreshToken[]
-  isActive      Boolean        @default(true) @map("is_active")
+  accountTokens AccountToken[]
+  status        UserStatus     @default(ACTIVE)
   lastLoginAt   DateTime?      @map("last_login_at")
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
   @@map("users")
+}
+
+enum UserStatus {
+  PENDING_ACTIVATION
+  ACTIVE
+  DISABLED
+}
+
+/// Token sekali pakai (aktivasi akun, reset password). Hanya hash SHA-256 yang disimpan.
+model AccountToken {
+  id        String       @id @default(uuid())
+  userId    String       @map("user_id")
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   TokenPurpose
+  tokenHash String       @unique @map("token_hash")
+  expiresAt DateTime     @map("expires_at")
+  usedAt    DateTime?    @map("used_at")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  @@index([userId, purpose])
+  @@map("account_tokens")
+}
+
+enum TokenPurpose {
+  ACTIVATION
+  PASSWORD_RESET
 }
 
 model RefreshToken {
@@ -65,6 +93,9 @@ model Employee {
   fullName       String         @map("full_name")
   employmentType EmploymentType @default(PROBATION) @map("employment_type")
   joinDate       DateTime       @default(now()) @map("join_date")
+  /// INACTIVE = karyawan keluar. Data tidak dihapus agar bisa diaktifkan kembali.
+  status         EmployeeStatus @default(ACTIVE)
+  exitDate       DateTime?      @map("exit_date") @db.Date
 
   // Relasi ke Master Data (AGENTS.md §1 — tidak ada free-text untuk entitas inti)
   jobTitleId       String          @map("job_title_id")
@@ -88,6 +119,7 @@ model Employee {
   @@index([departmentId])
   @@index([officeLocationId])
   @@index([workShiftId])
+  @@index([status])
   @@map("employees")
 }
 
@@ -95,6 +127,11 @@ enum EmploymentType {
   PROBATION
   KARTAP
   PKL
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
 }
 
 // =============================================================

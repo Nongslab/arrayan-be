@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { authService } from './auth.service.js'
-import { loginSchema, refreshSchema } from './auth.schema.js'
+import { activateSchema, loginSchema, refreshSchema } from './auth.schema.js'
 import { authenticate } from '../../middlewares/auth.middleware.js'
 import { loginLimiter } from './login-limiter.js'
 import type { FastifyReply } from 'fastify'
@@ -320,7 +320,67 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // 4. Endpoint Me (Mendapatkan data user aktif dari Bearer token atau Cookie)
+  // 4. Endpoint Aktivasi Akun (US-2.3) — publik, memakai token dari link undangan
+  fastify.post('/activate', {
+    schema: {
+      description:
+        'Aktivasi akun karyawan dengan token dari link undangan dan menetapkan password. ' +
+        'Password: 8–72 karakter, mengandung huruf besar, huruf kecil, angka, dan simbol. ' +
+        'Setelah berhasil, karyawan login lewat POST /api/auth/login.',
+      tags: ['Auth'],
+      body: {
+        type: 'object',
+        required: ['token', 'password'],
+        properties: {
+          token: { type: 'string', description: 'Token dari link aktivasi (64 karakter hex)' },
+          password: { type: 'string', examples: ['Rahasia123!'] },
+        },
+      },
+      response: {
+        200: {
+          description: 'Akun aktif',
+          type: 'object',
+          properties: {
+            statusCode: { type: 'number' },
+            message: { type: 'string' },
+            email: { type: 'string' },
+          },
+        },
+        400: {
+          description: 'Password tidak memenuhi kebijakan, atau token tidak valid/kedaluwarsa/sudah dipakai',
+          type: 'object',
+          properties: {
+            statusCode: { type: 'number' },
+            error: { type: 'string' },
+            message: { type: 'string' },
+          },
+        },
+      },
+    },
+    handler: async (request, reply) => {
+      const parseResult = activateSchema.safeParse(request.body)
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: 'Bad Request',
+          message: parseResult.error.issues[0]?.message || 'Input tidak valid',
+        })
+      }
+
+      try {
+        const { email } = await authService.activateAccount(parseResult.data)
+        return reply.send({ statusCode: 200, message: 'Akun berhasil diaktivasi. Silakan login.', email })
+      } catch (err: unknown) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: 'Bad Request',
+          message: (err as Error).message,
+        })
+      }
+    },
+  })
+
+  // 5. Endpoint Me (Mendapatkan data user aktif dari Bearer token atau Cookie)
   fastify.get('/me', {
     preHandler: [authenticate],
     schema: {
