@@ -41,7 +41,7 @@ flowchart LR
 | 5 | US-5.4 Pembatalan pengajuan | ✅ |
 | 6 | US-5.3 Approval berjenjang | 🟡 Q-1…Q-4 |
 | 7 | US-3.1 Engine status kehadiran | ✅ |
-| 8 | US-3.2 Clock-in / clock-out aplikasi | 🟡 Q-6 |
+| 8 | US-3.2 Clock-in / clock-out aplikasi | ✅ (GPS + IP; Wi-Fi menunggu Q-6) |
 | 9 | US-3.4 Rekap kehadiran | ✅ |
 | 10 | US-6.5 Manajemen training & remarks | ✅ |
 | 11 | US-4.1 Dashboard 5-in-1 | ✅ |
@@ -90,13 +90,14 @@ flowchart LR
 - Unit test tabel kasus lengkap (batas toleransi tepat, libur, akhir pekan, overnight).
 - **Implementasi:** hanya log mentah yang disimpan (`AttendanceLog`, sumber `APP`/`FINGERPRINT`/`MANUAL`); status harian **dihitung saat dibaca** sehingga otomatis benar bila cuti disetujui/dibatalkan, hari libur diedit, atau shift diubah — tanpa tabel ringkasan & tanpa proses hitung ulang. Log masuk = log pertama, pulang = log terakhir dalam jendela shift (4 jam sebelum mulai s.d. 8 jam setelah selesai). Terlambat dihitung dari jam mulai shift bila melewati toleransi. Karyawan tanpa shift memakai 08:00–17:00 Senin–Jumat, toleransi 15 menit. `GET /api/attendance/me` (bagian awal US-3.4) menampilkan status per hari + ringkasan.
 
-### US-3.2 Clock-in / clock-out lewat aplikasi 🟡 Q-6
+### US-3.2 Clock-in / clock-out lewat aplikasi ✅ selesai (GPS + IP kantor; Wi-Fi/BSSID menunggu Q-6)
 **Sebagai** karyawan, **saya ingin** absen dari aplikasi hanya saat berada di kantor, **agar** absensi tidak bisa dicurangi dari rumah.
 - `POST /api/attendance/clock-in` / `clock-out` dengan koordinat GPS.
 - Diterima bila jarak (haversine) ke `OfficeLocation` karyawan ≤ `radiusMeters`, **atau** jaringan kantor cocok (lihat Q-6).
 - Maks. satu clock-in & satu clock-out per hari kerja; duplikat → 409; di luar radius → 422 dengan jarak terukur.
 - Waktu dari server (bukan klien); status terlambat langsung dihitung via US-3.1.
 - ⚠️ **Keterbatasan web**: browser tidak bisa membaca SSID/BSSID Wi-Fi. Alternatif untuk web: daftar IP publik kantor (`OfficeLocation.allowedIpRanges`). BSSID hanya untuk aplikasi mobile native.
+- **Implementasi:** `POST /api/attendance/clock-in` & `/clock-out` — diterima bila GPS ≤ `radiusMeters` (haversine) **atau** IP termasuk `allowedIpRanges` (IP/CIDR, IPv4 & IPv6; field baru di master kantor). Satu IN & satu OUT per shift (shift malam: clock-out pagi milik shift kemarin), waktu dari server, pengajuan bersamaan diserialkan. Log menyimpan arah (`IN`/`OUT`), cara verifikasi (`GPS`/`IP_ALLOWLIST`), koordinat, akurasi, dan IP. Verifikasi Wi-Fi BSSID (aplikasi mobile) menyusul setelah Q-6.
 
 ### US-3.3 Integrasi mesin fingerprint 🔴 Q-7 + VPS
 **Sebagai** sistem, **saya ingin** menerima log dari mesin fingerprint kantor secara otomatis, **agar** kehadiran terverifikasi tanpa input manual.

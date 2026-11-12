@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { authenticate, authorize } from '../../middlewares/auth.middleware.js'
 import { auditContextFrom } from '../../lib/audit.js'
 import { addCorrection, listLogs, voidLog } from './attendance.corrections.js'
+import { clock } from './attendance.clock.js'
 import { HttpError } from '../../lib/http-error.js'
 import {
   errorResponses,
@@ -398,4 +399,69 @@ export const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
       }
     },
   })
+
+  // ---------------------------------------------------------------------------
+  // US-3.2: clock-in / clock-out aplikasi
+  // ---------------------------------------------------------------------------
+  const clockSchema = z
+    .object({
+      latitude: z.number().min(-90).max(90).optional(),
+      longitude: z.number().min(-180).max(180).optional(),
+      accuracyMeters: z.number().int().min(0).max(10_000).optional().describe('Akurasi GPS dari perangkat'),
+    })
+    .strict()
+    .refine((v) => (v.latitude === undefined) === (v.longitude === undefined), {
+      message: 'latitude dan longitude harus dikirim bersamaan',
+      path: ['longitude'],
+    })
+  const clockResponse = {
+    200: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        data: {
+          type: 'object',
+          properties: {
+            log: logJson,
+            kind: { type: 'string', enum: ['IN', 'OUT'] },
+            shiftDate: { type: 'string', description: 'Tanggal shift (shift malam: tanggal mulai shift)' },
+            verification: { type: 'string', enum: ['GPS', 'IP_ALLOWLIST'] },
+            distanceMeters: { type: 'number', nullable: true },
+            day: { ...toJsonSchema(daySchema), nullable: true },
+          },
+        },
+      },
+    },
+    ...errorResponses(400, 401, 403, 409, 422),
+  }
+  const clockDescription =
+    'Lokasi diverifikasi lewat GPS (di dalam radius kantor karyawan) ATAU IP internet kantor (allowedIpRanges). ' +
+    'Waktu dari server. Maks. satu clock-in & satu clock-out per shift (409 bila ganda). Di luar radius → 422 dengan jarak.'
+
+  for (const kind of ['IN', 'OUT'] as const) {
+    const path = kind === 'IN' ? '/clock-in' : '/clock-out'
+    fastify.post(path, {
+      preHandler: [authenticate],
+      schema: {
+        tags: ['Attendance'],
+        summary: kind === 'IN' ? 'Clock-in' : 'Clock-out',
+        description: clockDescription,
+        security: [{ bearerAuth: [] }],
+        body: { ...toJsonSchema(clockSchema), examples: [{ latitude: -6.175392, longitude: 106.827153, accuracyMeters: 12 }] },
+        response: clockResponse,
+      },
+      handler: async (request, reply) => {
+        try {
+          const input = parse(clockSchema, request.body ?? {})
+          const employeeId = request.userSession?.employee?.id
+          if (!employeeId) throw new HttpError(403, 'Akun ini tidak terhubung dengan data karyawan')
+          const data = await clock(kind, employeeId, input, request.ip)
+          return reply.send({ statusCode: 200, message: kind === 'IN' ? 'Clock-in berhasil' : 'Clock-out berhasil', data })
+        } catch (err) {
+          return sendError(reply, err)
+        }
+      },
+    })
+  }
 }

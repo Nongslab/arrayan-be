@@ -48,8 +48,14 @@ export interface DayResult {
 }
 
 /** Jendela pencocokan log terhadap shift: 4 jam sebelum mulai s.d. 8 jam setelah selesai. */
-const WINDOW_BEFORE_MS = 4 * 60 * 60 * 1000
-const WINDOW_AFTER_MS = 8 * 60 * 60 * 1000
+export const WINDOW_BEFORE_MS = 4 * 60 * 60 * 1000
+export const WINDOW_AFTER_MS = 8 * 60 * 60 * 1000
+
+/** Jendela waktu log yang dianggap milik shift pada `date`. */
+export function shiftWindow(date: string, shift: ShiftRule, timeZone: string) {
+  const { start, end } = shiftBounds(date, shift, timeZone)
+  return { start: new Date(start.getTime() - WINDOW_BEFORE_MS), end: new Date(end.getTime() + WINDOW_AFTER_MS) }
+}
 
 /** Offset zona waktu (ms) pada instant tertentu, mis. Asia/Jakarta → +7 jam. */
 export function timeZoneOffsetMs(instant: Date, timeZone: string): number {
