@@ -69,6 +69,12 @@ Schema, migrasi (dengan backfill) dan seed master data sudah merged (PR #11). Re
 
 ---
 
+6. **US-2.6 (Feature): Password Recovery & Change** — ✅ selesai
+   - `POST /api/auth/forgot-password`: link reset (berlaku 1 jam) hanya untuk akun aktif; respons selalu sama (tidak membocorkan email terdaftar); maks. 3 permintaan per IP + email per 15 menit.
+   - `POST /api/auth/reset-password`: token sekali pakai + kebijakan password; seluruh sesi lain dicabut.
+   - `POST /api/auth/change-password` (login): verifikasi password saat ini, sesi lain dicabut, sesi baru diterbitkan untuk perangkat saat ini; maks. 5 percobaan salah per 15 menit.
+   - Link dikirim lewat `InvitationSender` yang sama (driver `log` saat ini).
+
 #### 🧭 Keputusan Bisnis (disepakati 12 Nov 2026)
 | Topik | Keputusan |
 | :--- | :--- |
@@ -92,7 +98,7 @@ Schema, migrasi (dengan backfill) dan seed master data sudah merged (PR #11). Re
 Sebuah task/fitur di Fase 2 dinyatakan **SELESAI (DONE)** jika memenuhi seluruh kriteria berikut:
 
 - [ ] **Functional & Business Rules**:
-  - Semua User Story (US-2.1 s/d US-2.5) lolos skenario Acceptance Criteria.
+  - Semua User Story (US-2.1 s/d US-2.6) lolos skenario Acceptance Criteria.
   - Undangan aktivasi terkirim melalui `InvitationSender` dan link aktivasi berfungsi mengubah status dari `PENDING_ACTIVATION` menjadi `ACTIVE` (driver email menyusul saat VPS siap).
   - Struktur pohon organisasi `GET /api/employees/tree` tervalidasi membentuk hierarki yang akurat tanpa duplikasi atau circular loop.
 - [ ] **Database & Migrations**:

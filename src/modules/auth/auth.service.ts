@@ -1,8 +1,20 @@
-import crypto from 'node:crypto'
 import bcrypt from 'bcrypt'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
-import type { ActivateInput, LoginInput, UserSessionPayload } from './auth.schema.js'
+import { appConfig } from '../../lib/config.js'
+import { generateOpaqueToken, hashToken } from '../../lib/tokens.js'
+import { getInvitationSender } from '../../lib/notifications/invitation-sender.js'
+import {
+  consumeAccountToken,
+  issueAccountToken,
+  PASSWORD_RESET_TOKEN_TTL_HOURS,
+} from './account-token.service.js'
+import type { ActivateInput, ChangePasswordInput, LoginInput, ResetPasswordInput, UserSessionPayload } from './auth.schema.js'
+
+export { generateOpaqueToken, hashToken }
+
+/** Error yang pesannya aman ditampilkan ke klien (dipetakan ke 400/401 di route). */
+export class AuthFlowError extends Error {}
 
 const REFRESH_TOKEN_EXPIRY_DAYS = 7
 export const BCRYPT_ROUNDS = 10
@@ -43,14 +55,6 @@ export function toSessionPayload(user: UserWithSession): UserSessionPayload {
         }
       : null,
   }
-}
-
-export function hashToken(token: string): string {
-  return crypto.createHash('sha256').update(token).digest('hex')
-}
-
-export function generateOpaqueToken(): string {
-  return crypto.randomBytes(32).toString('hex')
 }
 
 export const authService = {
@@ -166,35 +170,76 @@ export const authService = {
     const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS)
 
     return prisma.$transaction(async (tx) => {
-      const token = await tx.accountToken.findUnique({
-        where: { tokenHash: hashToken(input.token) },
-        include: { user: { include: { employee: { select: { status: true } } } } },
-      })
-
-      const invalid =
-        !token ||
-        token.purpose !== 'ACTIVATION' ||
-        token.usedAt !== null ||
-        token.expiresAt < new Date() ||
-        token.user.status !== 'PENDING_ACTIVATION' ||
-        token.user.employee?.status === 'INACTIVE'
-      if (invalid) {
-        throw new Error('Link aktivasi tidak valid atau sudah kedaluwarsa. Minta HR mengirim ulang undangan.')
+      const { user, invalidMessage } = await consumeAccountToken(tx, input.token, 'ACTIVATION')
+      if (user.status !== 'PENDING_ACTIVATION' || user.employee?.status === 'INACTIVE') {
+        throw new AuthFlowError(invalidMessage)
       }
-
-      // Tandai terpakai secara atomik: gagal bila request lain sudah memakainya lebih dulu.
-      const consumed = await tx.accountToken.updateMany({
-        where: { id: token.id, usedAt: null },
-        data: { usedAt: new Date() },
-      })
-      if (consumed.count !== 1) {
-        throw new Error('Link aktivasi tidak valid atau sudah kedaluwarsa. Minta HR mengirim ulang undangan.')
-      }
-
-      await tx.user.update({ where: { id: token.userId }, data: { passwordHash, status: 'ACTIVE' } })
-      await tx.accountToken.deleteMany({ where: { userId: token.userId, purpose: 'ACTIVATION', usedAt: null } })
-
-      return { email: token.user.email }
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash, status: 'ACTIVE' } })
+      return { email: user.email }
     })
+  },
+
+  /**
+   * Lupa password: terbitkan link reset (1 jam) hanya untuk akun ACTIVE dengan karyawan aktif.
+   * Selalu "berhasil" dari sisi pemanggil agar tidak membocorkan email mana yang terdaftar.
+   * Mengembalikan link hanya di luar production (untuk dev & test).
+   */
+  async requestPasswordReset(email: string): Promise<{ devResetLink?: string }> {
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+      include: { employee: { select: { fullName: true, status: true } } },
+    })
+    if (!user || user.status !== 'ACTIVE' || !user.passwordHash || user.employee?.status === 'INACTIVE') {
+      return {}
+    }
+
+    const { token, expiresAt } = await prisma.$transaction((tx) =>
+      issueAccountToken(tx, user.id, 'PASSWORD_RESET', PASSWORD_RESET_TOKEN_TTL_HOURS),
+    )
+    const link = `${appConfig.appBaseUrl}/reset-password?token=${token}`
+    await getInvitationSender().send({
+      kind: 'PASSWORD_RESET',
+      to: user.email,
+      fullName: user.employee?.fullName ?? user.email,
+      link,
+      expiresAt,
+    })
+    return appConfig.exposeDevLinks ? { devResetLink: link } : {}
+  },
+
+  /** Reset password dengan token; seluruh sesi (refresh token) dicabut. */
+  async resetPassword(input: ResetPasswordInput): Promise<{ email: string }> {
+    const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS)
+
+    return prisma.$transaction(async (tx) => {
+      const { user, invalidMessage } = await consumeAccountToken(tx, input.token, 'PASSWORD_RESET')
+      if (user.status !== 'ACTIVE' || user.employee?.status === 'INACTIVE') {
+        throw new AuthFlowError(invalidMessage)
+      }
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash } })
+      await tx.refreshToken.updateMany({ where: { userId: user.id, revoked: false }, data: { revoked: true } })
+      return { email: user.email }
+    })
+  },
+
+  /**
+   * Ganti password oleh user yang sedang login. Semua refresh token lama dicabut;
+   * route menerbitkan sesi baru agar perangkat saat ini tetap login.
+   */
+  async changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user || user.status !== 'ACTIVE' || !user.passwordHash) {
+      throw new AuthFlowError('User tidak ditemukan atau tidak aktif')
+    }
+    if (!(await bcrypt.compare(input.currentPassword, user.passwordHash))) {
+      throw new AuthFlowError('Password saat ini salah')
+    }
+
+    const passwordHash = await bcrypt.hash(input.newPassword, BCRYPT_ROUNDS)
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: userId }, data: { passwordHash } }),
+      prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } }),
+      prisma.accountToken.deleteMany({ where: { userId, purpose: 'PASSWORD_RESET', usedAt: null } }),
+    ])
   },
 }

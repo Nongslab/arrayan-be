@@ -130,6 +130,9 @@ Ringkasan sesi auth:
 * **Access token** JWT 15 menit — dikirim via header `Authorization: Bearer <token>` atau cookie HttpOnly `arrayan_access_token`.
 * **Refresh token** opaque 7 hari — body `refreshToken` atau cookie `arrayan_refresh_token` (path `/api/auth`), disimpan sebagai hash SHA-256 dan dirotasi setiap `POST /api/auth/refresh`.
 * **Login limiter** — 5 percobaan gagal per IP + email dalam 15 menit → HTTP `429` dengan header `Retry-After`.
+* **Onboarding akun** — HR (`SUPER_ADMIN`) membuat karyawan & akun via `POST /api/employees`; karyawan mengaktivasi lewat `POST /api/auth/activate`.
+* **Password** — `POST /api/auth/forgot-password` → `POST /api/auth/reset-password` (link 1 jam), dan `POST /api/auth/change-password` saat login. Reset/ganti password mencabut sesi lain.
+* Selama driver email belum dipasang (`INVITATION_DRIVER=log`), link aktivasi/reset muncul di log & response API **hanya di luar production**.
 
 ---
 

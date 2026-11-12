@@ -1,8 +1,16 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { authService } from './auth.service.js'
-import { activateSchema, loginSchema, refreshSchema } from './auth.schema.js'
+import { AuthFlowError, authService } from './auth.service.js'
+import { InvalidAccountTokenError } from './account-token.service.js'
+import {
+  activateSchema,
+  changePasswordSchema,
+  forgotPasswordSchema,
+  loginSchema,
+  refreshSchema,
+  resetPasswordSchema,
+} from './auth.schema.js'
 import { authenticate } from '../../middlewares/auth.middleware.js'
-import { loginLimiter } from './login-limiter.js'
+import { createLoginLimiter, loginLimiter } from './login-limiter.js'
 import type { FastifyReply } from 'fastify'
 
 const ACCESS_TOKEN_EXPIRY = '15m'
@@ -82,6 +90,29 @@ function clearAuthCookies(reply: FastifyReply) {
   reply.clearCookie(REFRESH_TOKEN_COOKIE, { path: REFRESH_COOKIE_PATH })
   // Cookie lama (sebelum penyatuan nama cookie) — tetap dibersihkan agar browser lama bersih.
   reply.clearCookie('arrayan_token', { path: '/' })
+}
+
+/** Lupa password: maks. 3 permintaan per IP + email per 15 menit (anti spam/enumerasi). */
+const forgotPasswordLimiter = createLoginLimiter(3)
+/** Ganti password: maks. 5 percobaan password saat ini yang salah per IP + user per 15 menit. */
+const changePasswordLimiter = createLoginLimiter(5)
+
+const errorBody = {
+  type: 'object',
+  properties: { statusCode: { type: 'number' }, error: { type: 'string' }, message: { type: 'string' } },
+} as const
+
+function badRequest(message: string) {
+  return { statusCode: 400, error: 'Bad Request', message }
+}
+
+function isSafeAuthError(err: unknown): err is Error {
+  return err instanceof AuthFlowError || err instanceof InvalidAccountTokenError
+}
+
+function tooManyRequests(reply: FastifyReply, retryAfter: number, message: string) {
+  reply.header('Retry-After', String(retryAfter))
+  return reply.status(429).send({ statusCode: 429, error: 'Too Many Requests', message })
 }
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
@@ -371,16 +402,163 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         const { email } = await authService.activateAccount(parseResult.data)
         return reply.send({ statusCode: 200, message: 'Akun berhasil diaktivasi. Silakan login.', email })
       } catch (err: unknown) {
-        return reply.status(400).send({
-          statusCode: 400,
-          error: 'Bad Request',
-          message: (err as Error).message,
-        })
+        if (!isSafeAuthError(err)) throw err
+        return reply.status(400).send(badRequest(err.message))
       }
     },
   })
 
-  // 5. Endpoint Me (Mendapatkan data user aktif dari Bearer token atau Cookie)
+  // 5. Lupa password — publik. Respons selalu sama agar tidak membocorkan email terdaftar.
+  fastify.post('/forgot-password', {
+    schema: {
+      description:
+        'Meminta link reset password (berlaku 1 jam) untuk akun aktif. Respons selalu 200 dengan pesan yang sama, ' +
+        'terdaftar atau tidak. Maks. 3 permintaan per IP + email per 15 menit. ' +
+        '`devResetLink` hanya muncul di luar production untuk uji coba tanpa email.',
+      tags: ['Auth'],
+      body: {
+        type: 'object',
+        required: ['email'],
+        properties: { email: { type: 'string', examples: ['budi.santoso@arrayan.com'] } },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            statusCode: { type: 'number' },
+            message: { type: 'string' },
+            devResetLink: { type: 'string' },
+          },
+        },
+        400: errorBody,
+        429: errorBody,
+      },
+    },
+    handler: async (request, reply) => {
+      const parseResult = forgotPasswordSchema.safeParse(request.body)
+      if (!parseResult.success) {
+        return reply.status(400).send(badRequest(parseResult.error.issues[0]?.message || 'Input tidak valid'))
+      }
+
+      const { email } = parseResult.data
+      const retryAfter = forgotPasswordLimiter.retryAfterSeconds(request.ip, email)
+      if (retryAfter > 0) {
+        return tooManyRequests(reply, retryAfter, 'Terlalu banyak permintaan reset password. Coba lagi nanti.')
+      }
+      forgotPasswordLimiter.recordFailure(request.ip, email)
+
+      const { devResetLink } = await authService.requestPasswordReset(email)
+      return reply.send({
+        statusCode: 200,
+        message: 'Jika email terdaftar dan aktif, link reset password telah dikirim.',
+        ...(devResetLink ? { devResetLink } : {}),
+      })
+    },
+  })
+
+  // 6. Reset password dengan token dari link — publik
+  fastify.post('/reset-password', {
+    schema: {
+      description:
+        'Menetapkan password baru dengan token dari link reset. Seluruh sesi login lain dicabut. ' +
+        'Password: 8–72 karakter, mengandung huruf besar, huruf kecil, angka, dan simbol.',
+      tags: ['Auth'],
+      body: {
+        type: 'object',
+        required: ['token', 'password'],
+        properties: {
+          token: { type: 'string', description: 'Token dari link reset (64 karakter hex)' },
+          password: { type: 'string', examples: ['PasswordBaru123!'] },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: { statusCode: { type: 'number' }, message: { type: 'string' }, email: { type: 'string' } },
+        },
+        400: errorBody,
+      },
+    },
+    handler: async (request, reply) => {
+      const parseResult = resetPasswordSchema.safeParse(request.body)
+      if (!parseResult.success) {
+        return reply.status(400).send(badRequest(parseResult.error.issues[0]?.message || 'Input tidak valid'))
+      }
+
+      try {
+        const { email } = await authService.resetPassword(parseResult.data)
+        clearAuthCookies(reply)
+        return reply.send({ statusCode: 200, message: 'Password berhasil diubah. Silakan login kembali.', email })
+      } catch (err: unknown) {
+        if (!isSafeAuthError(err)) throw err
+        return reply.status(400).send(badRequest(err.message))
+      }
+    },
+  })
+
+  // 7. Ganti password (sedang login) — sesi lain dicabut, sesi baru diterbitkan untuk perangkat ini
+  fastify.post('/change-password', {
+    preHandler: [authenticate],
+    schema: {
+      description:
+        'Mengganti password user yang sedang login. Semua sesi lain (refresh token) dicabut; ' +
+        'response berisi token & cookie baru agar perangkat ini tetap login.',
+      tags: ['Auth'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['currentPassword', 'newPassword'],
+        properties: {
+          currentPassword: { type: 'string' },
+          newPassword: { type: 'string', examples: ['PasswordBaru123!'] },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            statusCode: { type: 'number' },
+            message: { type: 'string' },
+            accessToken: { type: 'string' },
+            refreshToken: { type: 'string' },
+          },
+        },
+        400: errorBody,
+        401: errorBody,
+        429: errorBody,
+      },
+    },
+    handler: async (request, reply) => {
+      const parseResult = changePasswordSchema.safeParse(request.body)
+      if (!parseResult.success) {
+        return reply.status(400).send(badRequest(parseResult.error.issues[0]?.message || 'Input tidak valid'))
+      }
+
+      const userId = request.userSession!.id
+      const retryAfter = changePasswordLimiter.retryAfterSeconds(request.ip, userId)
+      if (retryAfter > 0) {
+        return tooManyRequests(reply, retryAfter, 'Terlalu banyak percobaan password salah. Coba lagi nanti.')
+      }
+
+      try {
+        await authService.changePassword(userId, parseResult.data)
+      } catch (err: unknown) {
+        if (!isSafeAuthError(err)) throw err
+        changePasswordLimiter.recordFailure(request.ip, userId)
+        return reply.status(400).send(badRequest(err.message))
+      }
+      changePasswordLimiter.reset(request.ip, userId)
+
+      const session = await authService.getUserProfile(userId)
+      const accessToken = fastify.jwt.sign(session, { expiresIn: ACCESS_TOKEN_EXPIRY })
+      const refreshToken = await authService.createRefreshToken(userId)
+      setAuthCookies(reply, accessToken, refreshToken)
+
+      return reply.send({ statusCode: 200, message: 'Password berhasil diubah', accessToken, refreshToken })
+    },
+  })
+
+  // 8. Endpoint Me (Mendapatkan data user aktif dari Bearer token atau Cookie)
   fastify.get('/me', {
     preHandler: [authenticate],
     schema: {

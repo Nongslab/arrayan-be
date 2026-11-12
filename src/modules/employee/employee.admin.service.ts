@@ -50,7 +50,13 @@ function toDate(dateOnly: string): Date {
 async function deliverInvitation(invitation: PendingInvitation): Promise<InvitationInfo> {
   const sender = getInvitationSender()
   const link = `${appConfig.appBaseUrl}/activate?token=${invitation.token}`
-  await sender.send({ to: invitation.email, fullName: invitation.fullName, link, expiresAt: invitation.expiresAt })
+  await sender.send({
+    kind: 'ACTIVATION',
+    to: invitation.email,
+    fullName: invitation.fullName,
+    link,
+    expiresAt: invitation.expiresAt,
+  })
   return {
     driver: sender.driver,
     expiresAt: invitation.expiresAt.toISOString(),

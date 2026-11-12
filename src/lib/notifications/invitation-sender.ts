@@ -1,6 +1,9 @@
 import { appConfig } from '../config.js'
 
+export type AccountMessageKind = 'ACTIVATION' | 'PASSWORD_RESET'
+
 export interface InvitationMessage {
+  kind: AccountMessageKind
   to: string
   fullName: string
   link: string
@@ -8,13 +11,18 @@ export interface InvitationMessage {
 }
 
 /**
- * Port pengiriman undangan aktivasi akun. Service hanya bergantung pada antarmuka ini,
+ * Port pengiriman pesan akun (undangan aktivasi, link reset password). Service hanya bergantung pada antarmuka ini,
  * sehingga driver email (SMTP/Resend) atau WhatsApp bisa ditambahkan tanpa mengubah
  * endpoint maupun database.
  */
 export interface InvitationSender {
   readonly driver: string
   send(message: InvitationMessage): Promise<void>
+}
+
+const LABEL: Record<AccountMessageKind, string> = {
+  ACTIVATION: 'Undangan aktivasi akun',
+  PASSWORD_RESET: 'Link reset password',
 }
 
 type Logger = (payload: Record<string, unknown>, message: string) => void
@@ -31,14 +39,15 @@ export class LogInvitationSender implements InvitationSender {
   async send(message: InvitationMessage): Promise<void> {
     this.log(
       {
+        kind: message.kind,
         to: message.to,
         fullName: message.fullName,
         expiresAt: message.expiresAt.toISOString(),
         ...(appConfig.exposeDevLinks ? { link: message.link } : {}),
       },
       appConfig.exposeDevLinks
-        ? '[invitation:log] Undangan aktivasi (dev) — buka link untuk aktivasi'
-        : '[invitation:log] Undangan aktivasi dibuat, tetapi belum ada driver pengiriman (set INVITATION_DRIVER)',
+        ? `[invitation:log] ${LABEL[message.kind]} (dev) — buka link untuk melanjutkan`
+        : `[invitation:log] ${LABEL[message.kind]} dibuat, tetapi belum ada driver pengiriman (set INVITATION_DRIVER)`,
     )
   }
 }
