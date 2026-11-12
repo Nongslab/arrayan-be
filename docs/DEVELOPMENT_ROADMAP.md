@@ -39,7 +39,7 @@ Schema, migrasi (dengan backfill) dan seed master data sudah merged (PR #11). Re
 - [x] Validasi bisnis (MASTER_DATA.md §8): `code` UPPER_SNAKE immutable, siklus parent departemen, format `HH:mm`, total bobot KPI = 100.
 - [x] Test integrasi dengan Postgres (service di CI) + Swagger tag `Master: <entitas>`.
 
-### Fase 2: Master Data Karyawan, Tree Branch & Email Invitation (Issue #4 — FOKUS TAHAP INI)
+### Fase 2: Master Data Karyawan, Tree Branch & Email Invitation (Issue #4 — ✅ SELESAI)
 
 #### 📋 User Stories & Cakupan Fitur:
 1. **US-2.1 (Enabler): Secure Token & Invitation Delivery** — ✅ selesai (driver `log`; driver email/WA menyusul)
@@ -86,7 +86,7 @@ Schema, migrasi (dengan backfill) dan seed master data sudah merged (PR #11). Re
 | Link aktivasi sebelum ada email | Ditampilkan di response API & log hanya di mode non-production |
 | Approval cuti | Berjenjang dari bawah ke atas mengikuti rantai atasan (`managerId`); jumlah level menunggu klien → dibuat dapat dikonfigurasi (Fase 5) |
 
-#### ❓ Pertanyaan Terbuka untuk Klien (Fase 5)
+#### ❓ Pertanyaan Terbuka untuk Klien (Fase 5) — daftar lengkap Q-1…Q-11 di [`BACKLOG.md`](BACKLOG.md#pertanyaan-untuk-klien)
 1. Minimal berapa level approval cuti/izin/reimbursement? Apakah berbeda per jenis cuti?
 2. Siapa yang memberi approval bila karyawan tidak punya atasan (mis. level Management)?
 3. Apakah HR/Super Admin dapat memberi approval akhir atau membatalkan (override) keputusan approval?
@@ -97,25 +97,25 @@ Schema, migrasi (dengan backfill) dan seed master data sudah merged (PR #11). Re
 #### 🏆 Definition of Done (DoD) — Fase 2:
 Sebuah task/fitur di Fase 2 dinyatakan **SELESAI (DONE)** jika memenuhi seluruh kriteria berikut:
 
-- [ ] **Functional & Business Rules**:
+- [x] **Functional & Business Rules**:
   - Semua User Story (US-2.1 s/d US-2.6) lolos skenario Acceptance Criteria.
   - Undangan aktivasi terkirim melalui `InvitationSender` dan link aktivasi berfungsi mengubah status dari `PENDING_ACTIVATION` menjadi `ACTIVE` (driver email menyusul saat VPS siap).
   - Struktur pohon organisasi `GET /api/employees/tree` tervalidasi membentuk hierarki yang akurat tanpa duplikasi atau circular loop.
-- [ ] **Database & Migrations**:
+- [x] **Database & Migrations**:
   - File migrasi Prisma terstruktur rapi dan ter-track di Git (`prisma/migrations`).
   - Constraint unik pada `email` dan `nik` aktif.
-- [ ] **Security & Validation**:
+- [x] **Security & Validation**:
   - Seluruh endpoint terproteksi memiliki middleware `authenticate` dan `authorize(['SUPER_ADMIN'])` untuk endpoint tulis.
   - Seluruh request payload divalidasi ketat menggunakan skema Zod (Fastify route schema).
   - Token aktivasi disimpan dalam bentuk SHA-256 hash (bukan plain text).
   - Response payload bersih dari data sensitif (`passwordHash`, token hash).
-- [ ] **Automated Testing**:
+- [x] **Automated Testing**:
   - Unit tests & integration tests komprehensif ditulis menggunakan **Vitest**.
   - Menguji *happy path*, *validation error* (duplicate NIK/email, expired token, invalid managerId), dan relasi pohon hirarki.
   - Semua pengujian lulus 100% pada `npm test`.
-- [ ] **API Documentation**:
+- [x] **API Documentation**:
   - Endpoint baru terdaftar di **Swagger OpenAPI 3.0** (`/docs`) lengkap dengan schema request/response, deskripsi, dan contoh data (*examples*).
-- [ ] **Git & CI Quality Gate**:
+- [x] **Git & CI Quality Gate**:
   - Dikerjakan pada branch fitur terpisah (`feat/*`).
   - TypeScript build check lulus (`npm run build` dengan 0 errors).
   - GitHub Actions CI Quality Gate di branch berstatus hijau (passed).
@@ -127,31 +127,16 @@ Sebuah task/fitur di Fase 2 dinyatakan **SELESAI (DONE)** jika memenuhi seluruh 
 - [x] Audit log aksi admin & event keamanan (`GET /api/audit-logs`, SUPER_ADMIN). Keputusan: login sukses tidak dicatat (cukup `lastLoginAt`), retensi tanpa batas sampai ada kebijakan klien.
 - [x] Dockerfile + `docker-compose.prod.yml` + backup/restore, diuji penuh di lokal (mode production). Langkah yang butuh VPS/domain: [`DEPLOYMENT.md` §9](DEPLOYMENT.md#9-checklist-saat-vps-siap).
 
-### Fase 3: Real-Time Attendance & Integrasi Hardware (PRD v2.0 Update)
-- [ ] **Mesin Fingerprint Webhook/Receiver**:
-  - Endpoint `POST /api/attendance/fingerprint-sync` untuk menerima push log otomatis dari mesin fingerprint fisik kantor.
-- [ ] **Geofencing & Wi-Fi Location Lock**:
-  - Endpoint `POST /api/attendance/clock-in`: Validasi IP/BSSID jaringan Wi-Fi resmi kantor ATAU koordinat GPS di dalam radius meter yang ditentukan.
-- [ ] Kalkulasi status otomatis: *Hadir Tepat Waktu* vs *Terlambat* berdasarkan `WorkShift` karyawan (`startTime`, `lateToleranceMinutes`, `workDays`, `isOvernight`).
-- [ ] Radius, koordinat, dan Wi-Fi diambil dari `OfficeLocation` (data HO masih placeholder). Endpoint fingerprint menunggu VPS & merek mesin; rumus jarak GPS bisa dibuat dan diuji lebih awal.
+### Fase 2B–6: Backlog User Story
 
-### Fase 4: Centralized Dashboard Widgets 5-in-1 (PRD v2.0 Update)
-- [ ] Endpoint `GET /api/dashboard/widgets`:
-  1. *Yang Telat Hari Ini* (log fingerprint / clock-in web > jam batas).
-  2. *Yang Cuti Hari Ini* (pengajuan cuti status disetujui pada tanggal hari ini).
-  3. *Yang Sakit Hari Ini* (izin sakit pada hari berjalan).
-  4. *Birthday Hari Ini* (karyawan dengan `birthDate` sama dengan tanggal hari ini).
-  5. *Jadwal Training* (agenda training aktif hari ini dan yang akan datang).
-- [ ] Hari libur dari tabel `Holiday` dikecualikan dari hitungan telat/absen.
+Rincian per story (acceptance criteria, dependensi, status kesiapan 🟢/🟡/🔴) dan 11 pertanyaan untuk klien ada di **[`BACKLOG.md`](BACKLOG.md)**. Ringkasan:
 
-### Fase 5: Cuti, Izin, Reimbursement & Multi-Level Approval
-- [ ] Pengajuan cuti/sakit/izin (`POST /api/leaves`) memakai `LeaveType` (kuota, `requiresAttachment`, `deductsAnnualLeave`); cuti bersama (`Holiday.kind = COLLECTIVE_LEAVE`) memotong cuti tahunan.
-- [ ] Multi-level approval workflow mengikuti hierarki `managerId` (`Supervisor → Manager → Sr. Manager → HR/Management`).
-- [ ] Modul Reimbursement: upload bukti struk dan approval berjenjang.
+| Fase | User Story | Catatan utama |
+| :--- | :--- | :--- |
+| **2B — Data karyawan (gap PRD Module 1)** | US-2.7 data pribadi (`birthDate`), US-2.8 dokumen terenkripsi, US-2.9 pelacakan probation | `birthDate` belum ada di DB padahal dibutuhkan widget ulang tahun |
+| **3 — Attendance** | US-3.1 engine status kehadiran, US-3.2 clock-in aplikasi (GPS radius), US-3.3 fingerprint, US-3.4 rekap, US-3.5 koreksi HR | Browser tidak bisa membaca Wi-Fi → Q-6; fingerprint butuh VPS & merek mesin (Q-7) |
+| **5 — Cuti & approval** | US-5.1 saldo, US-5.2 pengajuan, US-5.3 approval berjenjang, US-5.4 pembatalan, US-5.5 reimbursement | Approval menunggu Q-1…Q-4; reimbursement tidak ada di PRD v2.0 (Q-10) |
+| **4 — Dashboard 5-in-1** | US-4.1 widget harian | Bergantung pada US-2.7, 3.1, 5.2, 6.5 |
+| **6 — KPI, kalender, training** | US-6.1 penilaian KPI, US-6.2 visibilitas berjenjang, US-6.3 grafik, US-6.4 kalender, US-6.5 training & remarks, US-6.6 ekspor | Skala kualitatif (Q-9); "export payroll" perlu klarifikasi (Q-11) |
 
-### Fase 6: KPI Kualitatif/Kuantitatif, Kalender & Extended Training Report
-- [ ] Template KPI per jabatan/departemen (`KpiTemplate` + `KpiIndicator`, schema sudah ada), penilaian kuantitatif (angka/target) dan kualitatif (deskriptif).
-- [ ] Cascading visibility laporan KPI (hanya atasan dan HR/Management yang bisa melihat bawahan).
-- [ ] Kalender Master HR GA & personal view (jadwal training + cuti personal).
-- [ ] Modul laporan training (kategori dari `TrainingCategory`) dengan kolom *remarks / feedback* peserta pelatihan.
-- [ ] Ekspor data rekap ke format Excel (.xlsx) dan PDF.
+Urutan pengerjaan yang disarankan memprioritaskan story 🟢 dan sumber data dashboard: US-2.7 → 2.9 → 5.1/5.2/5.4 → 5.3 → 3.1 → 3.2 → 3.4 → 6.5 → 4.1 → 6.4 → KPI → sisanya.
