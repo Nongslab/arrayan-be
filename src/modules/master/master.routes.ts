@@ -1,45 +1,23 @@
-import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify'
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { zodToJsonSchema } from 'zod-to-json-schema'
 import { authenticate, authorize } from '../../middlewares/auth.middleware.js'
-import { HttpError, mapPrismaError, zodToHttpError } from '../../lib/http-error.js'
+import { HttpError } from '../../lib/http-error.js'
+import {
+  errorResponses,
+  idParamsSchema as idParams,
+  paginationMetaSchema,
+  paginationQuery,
+  parse,
+  sendError,
+  toJsonSchema,
+  zodOnlyValidator,
+} from '../../lib/route-helpers.js'
 import { MASTER_ENTITIES, type MasterEntityConfig } from './master.entities.js'
 
 const ADMIN_ROLES = ['SUPER_ADMIN']
 
 type AnyObject = Record<string, unknown>
 
-/** JSON Schema (OpenAPI 3) dari Zod — dipakai untuk dokumentasi Swagger & serializer response. */
-function toJsonSchema(schema: z.ZodTypeAny): AnyObject {
-  const { $schema: _ignored, ...json } = zodToJsonSchema(schema, {
-    target: 'openApi3',
-    $refStrategy: 'none',
-  }) as AnyObject
-  return json
-}
-
-function parse<T extends z.ZodTypeAny>(schema: T, data: unknown): z.output<T> {
-  const result = schema.safeParse(data ?? {})
-  if (!result.success) throw zodToHttpError(result.error)
-  return result.data
-}
-
-function sendError(reply: FastifyReply, err: unknown) {
-  const httpError = err instanceof HttpError ? err : mapPrismaError(err)
-  if (!httpError) throw err
-  return reply.status(httpError.statusCode).send(httpError.toBody())
-}
-
-const errorResponse = toJsonSchema(
-  z.object({
-    statusCode: z.number(),
-    error: z.string(),
-    message: z.string(),
-    details: z.array(z.object({ path: z.string(), message: z.string() })).optional(),
-  }),
-)
-
-const idParams = z.object({ id: z.string().uuid('id harus UUID') })
 const activeBody = z.object({ isActive: z.boolean() }).strict()
 
 const baseListQuery = {
@@ -49,8 +27,7 @@ const baseListQuery = {
     .optional()
     .transform((value) => value === 'true')
     .describe('Sertakan data nonaktif (hanya SUPER_ADMIN)'),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  ...paginationQuery,
 }
 
 function registerEntityRoutes(fastify: FastifyInstance, entity: MasterEntityConfig) {
@@ -72,8 +49,7 @@ function registerEntityRoutes(fastify: FastifyInstance, entity: MasterEntityConf
     type: 'object',
     properties: { statusCode: { type: 'number', example: status }, message: { type: 'string' }, data: item },
   })
-  const errors = (...codes: number[]) =>
-    Object.fromEntries(codes.map((code) => [code, { ...errorResponse, description: `Error ${code}` }]))
+  const errors = errorResponses
 
   const delegate = () => entity.delegate()
   const serialize = (row: unknown) => entity.serialize(row as never)
@@ -100,10 +76,7 @@ function registerEntityRoutes(fastify: FastifyInstance, entity: MasterEntityConf
           properties: {
             statusCode: { type: 'number' },
             data: { type: 'array', items: item },
-            meta: {
-              type: 'object',
-              properties: { page: { type: 'number' }, limit: { type: 'number' }, total: { type: 'number' } },
-            },
+            meta: paginationMetaSchema,
           },
         },
         ...errors(400, 401),
@@ -272,7 +245,7 @@ export const MASTER_SWAGGER_TAGS = MASTER_ENTITIES.map((entity) => ({
 export const masterRoutes: FastifyPluginAsync = async (fastify) => {
   // Validasi body/query/params dilakukan Zod di handler (pesan konsisten & aturan lintas-field).
   // JSON schema pada route hanya untuk dokumentasi Swagger. Berlaku di dalam plugin ini saja.
-  fastify.setValidatorCompiler(() => (data) => ({ value: data }))
+  fastify.setValidatorCompiler(zodOnlyValidator)
 
   for (const entity of MASTER_ENTITIES) {
     registerEntityRoutes(fastify, entity)
