@@ -12,8 +12,28 @@ jobs:
   validate:
     name: Build & Typecheck
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: arrayan_hris_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
-      DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy_db?schema=public
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/arrayan_hris_test?schema=public
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/arrayan_hris_test?schema=public
+      # Secret khusus CI (bukan secret production), panjang >= 32 karakter sesuai requireEnv.
+      JWT_SECRET: ci_only_jwt_secret_not_for_production_0001
+      COOKIE_SECRET: ci_only_cookie_secret_not_for_production_01
 
     steps:
       - name: Checkout Source Code
@@ -36,6 +56,9 @@ jobs:
 
       - name: Run Unit Tests
         run: npm test
+
+      - name: Run Integration Tests (PostgreSQL)
+        run: npm run test:int
 
       - name: TypeScript Build Check
         run: npm run build
