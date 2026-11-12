@@ -125,7 +125,7 @@ Sebuah task/fitur di Fase 2 dinyatakan **SELESAI (DONE)** jika memenuhi seluruh 
 - [x] Validasi sesi per request (`sessionVersion`): akun nonaktif / ganti / reset password langsung memutus access token lama.
 - [x] Config env terpusat & tervalidasi (aturan khusus production), redaksi log, error 5xx generik, graceful shutdown.
 - [x] Audit log aksi admin & event keamanan (`GET /api/audit-logs`, SUPER_ADMIN). Keputusan: login sukses tidak dicatat (cukup `lastLoginAt`), retensi tanpa batas sampai ada kebijakan klien.
-- [ ] Dockerfile + `docker-compose.prod.yml` untuk deploy VPS.
+- [x] Dockerfile + `docker-compose.prod.yml` + backup/restore, diuji penuh di lokal (mode production). Langkah yang butuh VPS/domain: [`DEPLOYMENT.md` §9](DEPLOYMENT.md#9-checklist-saat-vps-siap).
 
 ### Fase 3: Real-Time Attendance & Integrasi Hardware (PRD v2.0 Update)
 - [ ] **Mesin Fingerprint Webhook/Receiver**:

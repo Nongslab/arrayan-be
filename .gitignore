@@ -6,3 +6,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .DS_Store
+
+# Secret environment production & artefak build/backup
+.env.production
+.env.*.local
+dist-seed/
+backups/

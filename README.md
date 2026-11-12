@@ -143,6 +143,17 @@ Ringkasan sesi auth:
 
 ---
 
+## 🐳 Deployment (Docker)
+
+Image production & stack API + PostgreSQL siap pakai: `Dockerfile`, `docker-compose.prod.yml`, `.env.production.example`, skrip backup/restore di `scripts/`. Panduan lengkap, hasil uji lokal, dan **checklist saat VPS siap**: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+```bash
+cp .env.production.example .env.production   # isi secret & domain https
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+---
+
 ## 🧪 Testing & Code Quality
 
 Jalankan rangkaian unit tests vitest (tanpa database):
