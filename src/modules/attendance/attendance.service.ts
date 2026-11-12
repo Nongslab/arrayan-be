@@ -223,3 +223,19 @@ export async function attendanceRecap(where: Prisma.EmployeeWhereInput, options:
     meta: { from: options.from, to: options.to, page: options.page, limit: options.limit, total },
   }
 }
+
+/** Karyawan aktif yang berstatus LATE pada `date` (sumber widget "Yang Telat Hari Ini"). */
+export async function lateEmployeesOn(date: string, now = new Date()) {
+  const employees = await prisma.employee.findMany({
+    where: { AND: [{ status: 'ACTIVE' }, employedWithin(date, date)] },
+    select: employeeSelect,
+    orderBy: [{ fullName: 'asc' }, { nik: 'asc' }],
+  })
+  const daysById = await computeFor(employees, date, date, now)
+  return employees.flatMap((employee) => {
+    const day = daysById.get(employee.id)?.[0]
+    return day?.status === 'LATE'
+      ? [{ employee: employeeSummary(employee), lateMinutes: day.lateMinutes, clockIn: day.clockIn }]
+      : []
+  })
+}
