@@ -66,6 +66,9 @@ jobs:
       - name: Seed Typecheck
         run: npx tsc -p tsconfig.seed.json --noEmit
 
+      - name: Demo Seed Typecheck
+        run: npx tsc -p tsconfig.demo.json
+
   docker:
     name: Docker Build
     runs-on: ubuntu-latest

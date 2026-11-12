@@ -34,6 +34,7 @@ arrayan-backend/
 ├── prisma/
 │   ├── schema.prisma        # Database schema definitions
 │   ├── seed.ts              # Seeder roles & initial Super Admin
+│   ├── demo/                # Data demo dev-only (npm run seed:demo)
 │   └── migrations/          # Prisma database migrations history
 ├── src/
 │   ├── lib/                 # Prisma Client singleton & HttpError / mapping error Prisma
@@ -111,6 +112,30 @@ shift `REGULAR` 08:00–17:00, jenis cuti, hari libur 2026/2027, kategori traini
 Master data dikelola lewat API `/api/master/<entitas>` (baca: semua user login; tulis & nonaktifkan: `SUPER_ADMIN`).
 
 📘 Detail struktur, ERD, flowchart, dan aturan master data: [`docs/MASTER_DATA.md`](docs/MASTER_DATA.md).
+
+#### Data demo (opsional, dev only)
+Untuk demo ke klien atau pengembangan FE, isi DB dev dengan organisasi contoh yang "hidup":
+```bash
+npm run seed:demo             # buat ulang data demo (aman diulang)
+npm run seed:demo -- --clear  # hapus data demo saja
+```
+Isinya relatif terhadap tanggal hari ini:
+- 20 karyawan dengan hierarki Direktur → Sr Manager → Manager → Supervisor → Staff, beserta variasi status:
+  - akun aktif, akun belum aktivasi, karyawan tanpa akun (PKL), karyawan keluar dengan akun nonaktif;
+  - probation yang hampir berakhir.
+- Absensi 30 hari terakhir dari aplikasi (GPS) dan fingerprint, termasuk yang terlambat dan mangkir.
+- Cuti/izin/sakit dengan status PENDING/APPROVED/CANCELLED, plus satu penyesuaian saldo.
+- Training lalu, mendatang, dan batal; event kantor.
+- Widget dashboard hari ini (terlambat, cuti, sakit, ulang tahun, training) langsung terisi.
+
+Semua akun demo: `<nama.depan>.<nama.belakang>@demo.arrayan.test` / `DemoArrayan123!`. Contoh: `siti.rahmawati@…` (HR, SUPER_ADMIN), `hendra.wijaya@…` (Direktur), `dewi.lestari@…` (Supervisor).
+
+Data demo ditandai dengan:
+- NIK `DEMO-*`;
+- email `@demo.arrayan.test`;
+- deskripsi training/event berakhiran `(data demo)`.
+
+Hanya data dengan penanda itu yang dihapus saat seed diulang. Script menolak berjalan bila `NODE_ENV=production`, dan kodenya (`prisma/demo/`) tidak ikut ke image Docker.
 
 ### 6. Menjalankan Server Development
 ```bash
