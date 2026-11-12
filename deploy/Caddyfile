@@ -1,0 +1,33 @@
+# TEMPLATE — reverse proxy HTTPS untuk VPS (Caddy mengurus sertifikat Let's Encrypt otomatis).
+# Status: BELUM DIUJI di VPS (butuh domain + IP publik). Lihat docs/DEPLOYMENT.md §6.
+#
+# Pemasangan di VPS (Ubuntu/Debian):
+#   sudo apt install -y caddy
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile   # ganti domain di bawah
+#   sudo systemctl reload caddy
+#
+# Asumsi: API berjalan di 127.0.0.1:4000 (docker-compose.prod.yml, API_PORT),
+# dan .env.production berisi TRUST_PROXY=true agar IP klien asli terbaca.
+
+api.hris.domain-klien.co.id {
+	encode gzip
+
+	# Header keamanan dasar
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy 127.0.0.1:4000
+}
+
+# Jika FE (build statis) di-host di VPS yang sama, contoh:
+# hris.domain-klien.co.id {
+# 	encode gzip
+# 	root * /var/www/arrayan-fe
+# 	try_files {path} /index.html
+# 	file_server
+# }

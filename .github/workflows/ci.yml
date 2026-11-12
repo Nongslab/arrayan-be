@@ -62,3 +62,27 @@ jobs:
 
       - name: TypeScript Build Check
         run: npm run build
+
+      - name: Seed Typecheck
+        run: npx tsc -p tsconfig.seed.json --noEmit
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Build Production Image
+        run: docker build -t arrayan-hris-api:ci .
+
+      - name: Smoke Test Image (config validation)
+        # Tanpa env wajib, container harus menolak start dan menyebutkan masalahnya.
+        run: |
+          set +e
+          output=$(docker run --rm -e SKIP_MIGRATIONS=true arrayan-hris-api:ci 2>&1)
+          code=$?
+          set -e
+          echo "$output"
+          test "$code" -ne 0
+          echo "$output" | grep -q "Konfigurasi environment tidak valid"

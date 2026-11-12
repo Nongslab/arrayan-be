@@ -1,0 +1,24 @@
+# Jangan pernah masukkan secret / artefak lokal ke image
+.env
+.env.*
+!.env.example
+!.env.production.example
+node_modules
+dist
+dist-seed
+coverage
+backups
+uploads
+.git
+.github
+.claude
+docs
+*.md
+**/*.test.ts
+**/*.int.test.ts
+src/test
+vitest*.config.ts
+docker-compose*.yml
+deploy
+scripts
+.DS_Store
