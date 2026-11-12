@@ -40,8 +40,11 @@ arrayan-backend/
 │   ├── middlewares/         # authenticate (Bearer/cookie) & authorize (RBAC)
 │   ├── modules/
 │   │   └── auth/            # Routes, service, Zod schema, login limiter, & tests
-│   └── server.ts            # Entrypoint: plugin CORS/cookie/JWT/Swagger + routes
-└── vitest.config.ts         # Vitest configuration
+│   ├── test/                # Global setup & helper integration test
+│   ├── app.ts               # buildApp(): plugin CORS/cookie/JWT/Swagger + routes (tanpa listen)
+│   └── server.ts            # Entrypoint: buildApp() + listen
+├── vitest.config.ts         # Vitest unit test
+└── vitest.int.config.ts     # Vitest integration test (PostgreSQL)
 ```
 
 ---
@@ -73,6 +76,7 @@ Variabel yang dipakai:
 | `DATABASE_URL` | Koneksi PostgreSQL; nilai di `.env.example` cocok dengan `docker-compose.yml` |
 | `JWT_SECRET`, `COOKIE_SECRET` | **Wajib, minimal 32 karakter.** Server menolak start jika kosong. Production: `openssl rand -hex 32` |
 | `TRUST_PROXY` | `true` jika API berada di belakang nginx, agar IP klien terbaca untuk login limiter |
+| `TEST_DATABASE_URL` | DB khusus integration test (nama wajib mengandung `test`, mis. `arrayan_hris_test`); dibuat otomatis saat `npm run test:int` |
 
 ### 4. Menjalankan Database PostgreSQL
 ```bash
@@ -125,10 +129,16 @@ Ringkasan sesi auth:
 
 ## 🧪 Testing & Code Quality
 
-Jalankan rangkaian unit tests vitest:
+Jalankan rangkaian unit tests vitest (tanpa database):
 ```bash
 npm test
 ```
+
+Jalankan integration tests (`*.int.test.ts`) terhadap PostgreSQL — butuh `npm run db:up` dan `TEST_DATABASE_URL` di `.env`:
+```bash
+npm run test:int
+```
+Global setup menjalankan `prisma migrate deploy` + seed ke DB test, lalu test memanggil API lewat `app.inject()` (helper di `src/test/helpers.ts`). DB development tidak pernah disentuh.
 
 Jalankan typecheck TypeScript:
 ```bash
@@ -141,4 +151,4 @@ npm run typecheck
 
 Repositori ini menerapkan standar keamanan **Branch Protection** pada branch `main`:
 1. **Dilarang Direct Push ke `main`**: Semua perubahan wajib melalui branch fitur (`feat/*`, `fix/*`, `chore/*`) dan diajukan lewat Pull Request (PR).
-2. **CI Quality Gate Otomatis**: Setiap commit di branch mana pun otomatis menjalankan validasi schema Prisma, generate client, Vitest unit test, dan TypeScript build.
+2. **CI Quality Gate Otomatis**: Setiap commit di branch mana pun otomatis menjalankan validasi schema Prisma, generate client, Vitest unit test, integration test terhadap service PostgreSQL 16, dan TypeScript build.
