@@ -48,7 +48,7 @@ flowchart LR
 | 12 | US-6.4 Kalender perusahaan & personal | 🟢 |
 | 13 | US-6.1–6.3 KPI (penilaian, visibilitas, grafik) | 🟡 Q-9 |
 | 14 | US-2.8 Dokumen karyawan terenkripsi | 🟡 Q-8 |
-| 15 | US-3.5 Koreksi absensi oleh HR | 🟢 |
+| 15 | US-3.5 Koreksi absensi oleh HR | ✅ |
 | 16 | US-6.6 Ekspor Excel / PDF | 🟡 Q-11 |
 | 17 | US-5.5 Reimbursement | 🟡 Q-10 |
 | 18 | US-3.3 Integrasi mesin fingerprint | 🔴 Q-7 + VPS |
@@ -110,9 +110,10 @@ flowchart LR
 - Ringkasan bulanan: hari hadir, terlambat (total menit), absen, cuti, sakit.
 - **Implementasi:** `GET /api/attendance/me`, `/team` (seluruh bawahan semua level), `/` (permission `all`/`company.read_all` — SUPER_ADMIN & Management; filter departemen + sub-departemen, paginasi), `/employees/:id` (diri sendiri, atasan di rantai atas, atau HR/Management; lainnya 404). Opsi `includeDays=true` untuk status per hari. Karyawan yang keluar di tengah rentang tetap direkap sampai tanggal keluar. Query di-batch per jenis data (bukan per karyawan).
 
-### US-3.5 Koreksi absensi oleh HR 🟢
+### US-3.5 Koreksi absensi oleh HR ✅ selesai
 **Sebagai** HR, **saya ingin** mengoreksi absensi (lupa clock-out, mesin rusak), **agar** rekap akurat.
 - `POST /api/attendance/corrections` (sumber `MANUAL`, wajib alasan) — tercatat di audit log; status harian dihitung ulang.
+- **Implementasi:** tambah log manual (`POST /corrections`), batalkan log salah (`POST /logs/:id/void` — tetap tersimpan, tidak dihitung engine), dan lihat log mentah (`GET /logs`, HR atau diri sendiri, opsi `includeVoided`). Waktu dicek: tidak di masa depan, maks. 1 tahun lalu, di dalam masa kerja.
 
 ---
 

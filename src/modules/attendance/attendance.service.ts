@@ -107,6 +107,7 @@ async function computeFor(employees: EmployeeRow[], from: string, to: string, no
     prisma.attendanceLog.findMany({
       where: {
         employeeId: { in: ids },
+        voidedAt: null, // log yang dibatalkan HR tidak dihitung
         occurredAt: { gte: addDays(fromDateOnly(from), -2), lte: addDays(fromDateOnly(to), 2) },
       },
       select: { employeeId: true, occurredAt: true },

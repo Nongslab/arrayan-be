@@ -456,20 +456,26 @@ enum AttendanceSource {
 }
 
 model AttendanceLog {
-  id         String           @id @default(uuid())
-  employeeId String           @map("employee_id")
-  employee   Employee         @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  id          String           @id @default(uuid())
+  employeeId  String           @map("employee_id")
+  employee    Employee         @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   /// Waktu kejadian (instant, timestamptz)
-  occurredAt DateTime         @map("occurred_at") @db.Timestamptz(3)
-  source     AttendanceSource
-  latitude   Decimal?         @db.Decimal(9, 6)
-  longitude  Decimal?         @db.Decimal(9, 6)
-  ip         String?
+  occurredAt  DateTime         @map("occurred_at") @db.Timestamptz(3)
+  source      AttendanceSource
+  latitude    Decimal?         @db.Decimal(9, 6)
+  longitude   Decimal?         @db.Decimal(9, 6)
+  ip          String?
   /// Kode perangkat fingerprint (US-3.3) bila sumbernya FINGERPRINT
-  deviceCode String?          @map("device_code")
+  deviceCode  String?          @map("device_code")
   /// Alasan koreksi (MANUAL, US-3.5)
-  note       String?
-  createdAt  DateTime         @default(now()) @map("created_at")
+  note        String?
+  /// User (HR) yang membuat log MANUAL
+  createdById String?          @map("created_by_id")
+  /// Log yang dibatalkan HR tidak dihitung engine, tetapi tetap tersimpan sebagai jejak
+  voidedAt    DateTime?        @map("voided_at")
+  voidReason  String?          @map("void_reason")
+  voidedById  String?          @map("voided_by_id")
+  createdAt   DateTime         @default(now()) @map("created_at")
 
   @@index([employeeId, occurredAt])
   @@index([occurredAt])
